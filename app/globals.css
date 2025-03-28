@@ -1,0 +1,119 @@
+@import "tailwindcss";
+
+/* Light theme variables */
+:root {
+  --bg-main: #f8fafc;
+  --bg-card: #ffffff;
+  --bg-accent: #f1f5f9;
+  --text-primary: #0f172a;
+  --text-secondary: #475569;
+  --text-muted: #64748b;
+  --border-color: #e2e8f0;
+  --shadow-color: rgba(0, 0, 0, 0.05);
+  --accent-color: #3b82f6;
+  --accent-hover: #2563eb;
+  --success-bg: #ecfdf5;
+  --success-text: #10b981;
+  --success-border: #d1fae5;
+}
+
+/* Dark theme variables */
+html.dark {
+  --bg-main: #0f172a;
+  --bg-card: #1e293b;
+  --bg-accent: #334155;
+  --text-primary: #f8fafc;
+  --text-secondary: #e2e8f0;
+  --text-muted: #cbd5e1;
+  --border-color: #334155;
+  --shadow-color: rgba(0, 0, 0, 0.3);
+  --accent-color: #60a5fa;
+  --accent-hover: #93c5fd;
+  --success-bg: #064e3b;
+  --success-text: #34d399;
+  --success-border: #065f46;
+}
+
+/* Base styles */
+body {
+  background-color: var(--bg-main);
+  color: var(--text-primary);
+  font-family: Arial, Helvetica, sans-serif;
+  transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+/* Tailwind classes override - using attribute selector for higher specificity without !important */
+[class*="bg-white"], [class*="dark:bg-gray-800"] {
+  background-color: var(--bg-card);
+  color: var(--text-primary);
+}
+
+[class*="bg-gray-100"], [class*="dark:bg-gray-900"] {
+  background-color: var(--bg-main);
+}
+
+[class*="text-gray-900"], [class*="dark:text-white"] {
+  color: var(--text-primary);
+}
+
+[class*="text-gray-800"], [class*="dark:text-gray-200"] {
+  color: var(--text-primary);
+}
+
+[class*="text-gray-600"], [class*="dark:text-gray-300"] {
+  color: var(--text-secondary);
+}
+
+/* Custom button styles */
+.theme-toggle-btn {
+  background-color: var(--bg-card);
+  color: var(--text-primary);
+  box-shadow: 0 2px 10px var(--shadow-color);
+  border: 1px solid var(--border-color);
+}
+
+.theme-toggle-btn:hover {
+  background-color: var(--bg-accent);
+}
+
+/* Accent button styles */
+.bg-accent {
+  background-color: var(--accent-color);
+  color: white;
+}
+
+.bg-accent:hover {
+  background-color: var(--accent-hover);
+}
+
+/* Success styles */
+.bg-success {
+  background-color: var(--success-bg);
+  border: 1px solid var(--success-border);
+}
+
+.bg-success h2 {
+  color: var(--success-text);
+  font-weight: 600;
+}
+
+.bg-success p {
+  color: var(--text-primary);
+}
+
+/* Direct access to variables through utility classes */
+.bg-main { background-color: var(--bg-main); }
+.bg-card { background-color: var(--bg-card); }
+.bg-accent { background-color: var(--bg-accent); }
+.text-primary { color: var(--text-primary); }
+.text-secondary { color: var(--text-secondary); }
+.text-muted { color: var(--text-muted); }
+.text-accent-color { color: var(--accent-color); }
+.border-color { border-color: var(--border-color); }
+
+/* Add transitions for smoother theme switching */
+*, *::before, *::after {
+  transition-property: background-color, border-color, color, fill, stroke;
+  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+  transition-duration: 200ms;
+}
