@@ -16,9 +16,6 @@ export async function GET(req: Request) {
       );
     }
 
-    // Connect to the database
-    await dbConnect();
-
     // Get user ID from session
     const userId = session.user.email;
     
@@ -28,6 +25,17 @@ export async function GET(req: Request) {
         { status: 400 }
       );
     }
+
+    // For bypass user, return default values
+    if (userId === "temp@example.com") {
+      return NextResponse.json({
+        hasSurvey: false,
+        isSubmitted: false
+      }, { status: 200 });
+    }
+
+    // Connect to the database
+    await dbConnect();
 
     // Check if user has a survey response and if it's been submitted
     const surveyResponse = await SurveyResponse.findOne({ userId });

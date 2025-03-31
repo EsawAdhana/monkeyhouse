@@ -6,12 +6,33 @@ export interface SurveyFormData {
   housingCities: string[];
   internshipStartDate: string;
   internshipEndDate: string;
+  internshipCompany: string;
+  sameCompanyOnly: boolean;
   desiredRoommates: string;
   monthlyBudget: number;
-  nonNegotiables: string[];
+  preferences: Record<string, PreferenceRating>;
   additionalNotes: string;
   submitted: boolean;
 }
+
+export type PreferenceRating = "must_have" | "prefer" | "neutral" | "prefer_not" | "deal_breaker";
+
+export const PREFERENCE_ITEMS = [
+  "Okay with smoking/vaping",
+  "Okay with alcohol",
+  "Okay with pets",
+  "Okay with guests",
+  "Okay with overnight guests",
+  "LGBTQ-friendly",
+];
+
+export const PREFERENCE_LABELS: Record<PreferenceRating, string> = {
+  "must_have": "Must-have",
+  "prefer": "Prefer",
+  "neutral": "Neutral",
+  "prefer_not": "Prefer not",
+  "deal_breaker": "Deal-breaker"
+};
 
 export const HOUSING_REGIONS = {
   "Bay Area": ["San Francisco", "San Jose", "Oakland", "Palo Alto", "Mountain View", "Cupertino", "Sunnyvale", "Santa Clara"],
@@ -20,17 +41,3 @@ export const HOUSING_REGIONS = {
   "Austin Area": ["Austin", "Round Rock", "Cedar Park"],
   "Other": ["Other"]
 };
-
-export const NON_NEGOTIABLES = [
-  "Cleanliness", 
-  "Quiet Hours", 
-  "No Smoking", 
-  "No Alcohol", 
-  "Pet-Free", 
-  "Religious Preferences",
-  "Gender",
-  "Sexual Orientation",
-  "Diet Restrictions",
-  "Early Riser",
-  "Night Owl"
-]; 

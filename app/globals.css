@@ -15,6 +15,10 @@
   --success-bg: #ecfdf5;
   --success-text: #10b981;
   --success-border: #d1fae5;
+  --survey-gradient-from: #e0e7ff;
+  --survey-gradient-to: #dbeafe;
+  --checkbox-bg: #f1f5f9;
+  --checkbox-border: #e2e8f0;
 }
 
 /* Dark theme variables */
@@ -32,6 +36,10 @@ html.dark {
   --success-bg: #064e3b;
   --success-text: #34d399;
   --success-border: #065f46;
+  --survey-gradient-from: rgba(30, 58, 138, 0.2);
+  --survey-gradient-to: rgba(67, 56, 202, 0.2);
+  --checkbox-bg: #2a3a53;
+  --checkbox-border: #3e4c60;
 }
 
 /* Base styles */

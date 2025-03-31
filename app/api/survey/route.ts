@@ -7,13 +7,17 @@ import { authOptions } from "@/app/api/auth/[...nextauth]/route";
 // GET the current user's survey response
 export async function GET(req: NextRequest) {
   try {
-    await dbConnect();
-    
     const session = await getServerSession(authOptions);
     if (!session || !session.user?.email) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
+    // For bypass user, return empty response
+    if (session.user.email === "temp@example.com") {
+      return NextResponse.json({ data: null });
+    }
+
+    await dbConnect();
     const response = await SurveyResponse.findOne({ userId: session.user.email });
     
     return NextResponse.json({ data: response || null });
@@ -26,8 +30,6 @@ export async function GET(req: NextRequest) {
 // POST to create or update a survey response
 export async function POST(req: NextRequest) {
   try {
-    await dbConnect();
-    
     const session = await getServerSession(authOptions);
     if (!session || !session.user?.email) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -42,8 +44,11 @@ export async function POST(req: NextRequest) {
       "housingRegion",
       "internshipStartDate", 
       "internshipEndDate", 
+      "internshipCompany",
+      "sameCompanyOnly",
       "desiredRoommates",
-      "monthlyBudget"
+      "monthlyBudget",
+      "preferences"
     ];
     
     for (const field of requiredFields) {
@@ -51,6 +56,21 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: `${field} is required` }, { status: 400 });
       }
     }
+    
+    // For bypass user, just return the data without saving to database
+    if (session.user.email === "temp@example.com") {
+      return NextResponse.json({ 
+        data: {
+          ...body,
+          userId: session.user.email,
+          createdAt: new Date(),
+          updatedAt: new Date()
+        }
+      }, { status: 200 });
+    }
+    
+    // For real users, proceed with database operations
+    await dbConnect();
     
     // Find existing response or create new one
     const existingResponse = await SurveyResponse.findOne({ userId: session.user.email });

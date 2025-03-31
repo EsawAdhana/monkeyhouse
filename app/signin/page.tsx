@@ -11,6 +11,10 @@ export default function SignIn() {
     await signIn("google", { callbackUrl: "/dashboard" });
   };
 
+  const handleBypassSignIn = async () => {
+    await signIn("bypass", { callbackUrl: "/welcome" });
+  };
+
   return (
     <div className="flex min-h-screen flex-col items-center justify-center bg-gray-100 dark:bg-gray-900">
       <ThemeToggle />
@@ -19,7 +23,7 @@ export default function SignIn() {
         <p className="mb-6 text-center text-gray-600 dark:text-gray-300">Find your perfect internship housing match</p>
         <button
           onClick={handleGoogleSignIn}
-          className="flex w-full items-center justify-center rounded-md bg-accent hover:bg-accent-hover px-4 py-3 text-white font-medium shadow-md transition-colors"
+          className="flex w-full items-center justify-center rounded-md bg-accent hover:bg-accent-hover px-4 py-3 text-white font-medium shadow-md transition-colors mb-4"
         >
           <svg
             className="mr-2 h-5 w-5"
@@ -46,6 +50,13 @@ export default function SignIn() {
             />
           </svg>
           Continue with Google
+        </button>
+
+        <button
+          onClick={handleBypassSignIn}
+          className="flex w-full items-center justify-center rounded-md bg-gray-500 hover:bg-gray-600 px-4 py-3 text-white font-medium shadow-md transition-colors"
+        >
+          Temporary Bypass (No Auth)
         </button>
       </div>
     </div>

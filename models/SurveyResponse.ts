@@ -1,7 +1,6 @@
 'use server';
 
 import mongoose from "mongoose";
-import { HOUSING_REGIONS, NON_NEGOTIABLES } from "@/constants/survey-constants";
 
 // Define interface for the SurveyResponse document
 export interface ISurveyResponse extends mongoose.Document {
