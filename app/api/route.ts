@@ -50,14 +50,6 @@ export async function POST(req: NextRequest) {
     
     const body = await req.json();
     
-    // Validate required fields
-    const requiredFields = ["internshipStartDate", "cleanlinessPreference", "sleepSchedule", "noisePreference"];
-    for (const field of requiredFields) {
-      if (!body[field]) {
-        return NextResponse.json({ error: `${field} is required` }, { status: 400 });
-      }
-    }
-    
     // Find existing response or create new one
     const existingResponse = await SurveyResponse.findOne({ userId: session.user.email });
     

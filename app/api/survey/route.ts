@@ -12,11 +12,6 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    // For bypass user, return empty response
-    if (session.user.email === "temp@example.com") {
-      return NextResponse.json({ data: null });
-    }
-
     await dbConnect();
     const response = await SurveyResponse.findOne({ userId: session.user.email });
     
@@ -36,40 +31,32 @@ export async function POST(req: NextRequest) {
     }
     
     const body = await req.json();
+    const partialSubmission = new URL(req.url).searchParams.get('partial') === 'true';
     
-    // Validate required fields
-    const requiredFields = [
-      "gender", 
-      "roomWithDifferentGender", 
-      "housingRegion",
-      "internshipStartDate", 
-      "internshipEndDate", 
-      "internshipCompany",
-      "sameCompanyOnly",
-      "desiredRoommates",
-      "monthlyBudget",
-      "preferences"
-    ];
-    
-    for (const field of requiredFields) {
-      if (body[field] === undefined || body[field] === null || body[field] === "") {
-        return NextResponse.json({ error: `${field} is required` }, { status: 400 });
+    // Only validate required fields for final submission
+    if (!partialSubmission) {
+      const requiredFields = [
+        "gender", 
+        "roomWithDifferentGender", 
+        "housingRegion",
+        "internshipStartDate", 
+        "internshipEndDate", 
+        "internshipCompany",
+        "sameCompanyOnly",
+        "desiredRoommates",
+        "monthlyBudget",
+        "preferences"
+      ];
+      
+      const missingFields = requiredFields.filter(field => !body[field]);
+      if (missingFields.length > 0) {
+        return NextResponse.json({ 
+          error: "Missing required fields", 
+          fields: missingFields 
+        }, { status: 400 });
       }
     }
     
-    // For bypass user, just return the data without saving to database
-    if (session.user.email === "temp@example.com") {
-      return NextResponse.json({ 
-        data: {
-          ...body,
-          userId: session.user.email,
-          createdAt: new Date(),
-          updatedAt: new Date()
-        }
-      }, { status: 200 });
-    }
-    
-    // For real users, proceed with database operations
     await dbConnect();
     
     // Find existing response or create new one
@@ -77,17 +64,39 @@ export async function POST(req: NextRequest) {
     
     if (existingResponse) {
       // Update existing response
-      Object.assign(existingResponse, body);
-      await existingResponse.save();
+      if (partialSubmission) {
+        // For partial submissions, only update the fields that were provided
+        Object.keys(body).forEach(key => {
+          if (body[key] !== undefined) {
+            existingResponse[key] = body[key];
+          }
+        });
+        
+        // Save with validation disabled for partial submissions
+        await existingResponse.save({ validateBeforeSave: false });
+      } else {
+        // For final submission, update all fields
+        Object.assign(existingResponse, body);
+        // Set submitted to true for final submissions
+        existingResponse.submitted = true;
+        await existingResponse.save();
+      }
       return NextResponse.json({ data: existingResponse });
     } else {
       // Create new response
       const newResponse = new SurveyResponse({
         ...body,
         userId: session.user.email,
+        submitted: !partialSubmission, // Only mark as submitted for final submissions
       });
       
-      await newResponse.save();
+      // Save with validation disabled for partial submissions
+      if (partialSubmission) {
+        await newResponse.save({ validateBeforeSave: false });
+      } else {
+        await newResponse.save();
+      }
+      
       return NextResponse.json({ data: newResponse }, { status: 201 });
     }
   } catch (error) {

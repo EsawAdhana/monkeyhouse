@@ -18,6 +18,7 @@ export default function SurveyForm({ onSubmitSuccess }: SurveyFormProps) {
   const [showCustomCityInput, setShowCustomCityInput] = useState(false);
   const [currentStep, setCurrentStep] = useState(1);
   const totalSteps = 5;
+  const [validationErrors, setValidationErrors] = useState<{ [key: string]: string }>({});
   
   const [formData, setFormData] = useState<SurveyFormData>({
     gender: "",
@@ -110,39 +111,83 @@ export default function SurveyForm({ onSubmitSuccess }: SurveyFormProps) {
   // Navigation functions
   const goToNextStep = () => {
     if (currentStep < totalSteps) {
-      // Validate date range when on step 3 (internship details)
-      if (currentStep === 3) {
-        if (formData.internshipStartDate && formData.internshipEndDate) {
-          const startDate = new Date(formData.internshipStartDate);
-          const endDate = new Date(formData.internshipEndDate);
-          
-          if (startDate > endDate) {
-            alert("Start date cannot be after end date. Please adjust your dates.");
-            return;
-          }
-        }
+      // Validate the current step before proceeding
+      if (validateStep(currentStep)) {
+        setCurrentStep(currentStep + 1);
+        // Clear validation errors when moving to next step
+        setValidationErrors({});
       }
-      
-      setCurrentStep(currentStep + 1);
     }
   };
 
   const goToPreviousStep = () => {
     if (currentStep > 1) {
       setCurrentStep(currentStep - 1);
+      // Clear validation errors when going back
+      setValidationErrors({});
     }
   };
 
-  // Fetch existing data - temporarily disabled
+  // Step-specific validation
+  const validateStep = (step: number): boolean => {
+    const errors: { [key: string]: string } = {};
+    
+    switch (step) {
+      case 1: // Basic Info
+        if (!formData.gender) {
+          errors.gender = "Please select your gender";
+        }
+        break;
+      case 2: // Housing Preferences
+        if (!formData.housingRegion) {
+          errors.housingRegion = "Please select a housing region";
+        }
+        if (formData.housingCities.length === 0) {
+          errors.housingCities = "Please select at least one city";
+        }
+        break;
+      case 3: // Internship Details
+        if (!formData.internshipStartDate) {
+          errors.internshipStartDate = "Please select your internship start date";
+        }
+        if (!formData.internshipEndDate) {
+          errors.internshipEndDate = "Please select your internship end date";
+        }
+        if (!formData.internshipCompany) {
+          errors.internshipCompany = "Please enter your internship company";
+        }
+        if (formData.internshipStartDate && formData.internshipEndDate) {
+          const startDate = new Date(formData.internshipStartDate);
+          const endDate = new Date(formData.internshipEndDate);
+          if (startDate > endDate) {
+            errors.internshipEndDate = "End date cannot be before start date";
+          }
+        }
+        break;
+      case 4: // Roommate Preferences
+        if (!formData.desiredRoommates) {
+          errors.desiredRoommates = "Please select number of desired roommates";
+        }
+        if (!formData.monthlyBudget) {
+          errors.monthlyBudget = "Please enter your monthly budget";
+        }
+        break;
+      case 5: // Additional Preferences
+        // No required fields in this step
+        break;
+    }
+
+    setValidationErrors(errors);
+    return Object.keys(errors).length === 0;
+  };
+
+  // Fetch existing data
   useEffect(() => {
     const fetchSurvey = async () => {
-      // Temporarily bypass session check
-      // if (!session) return;
+      if (!session) return;
       
       try {
         setLoading(true);
-        // Comment out actual API call for testing
-        /*
         const response = await fetch("/api/survey");
         const result = await response.json();
         
@@ -162,14 +207,15 @@ export default function SurveyForm({ onSubmitSuccess }: SurveyFormProps) {
             housingCities: surveyData.housingCities || [],
             internshipStartDate: surveyData.internshipStartDate ? new Date(surveyData.internshipStartDate).toISOString().split("T")[0] : "",
             internshipEndDate: surveyData.internshipEndDate ? new Date(surveyData.internshipEndDate).toISOString().split("T")[0] : "",
+            internshipCompany: surveyData.internshipCompany || "",
+            sameCompanyOnly: surveyData.sameCompanyOnly || false,
             desiredRoommates: surveyData.desiredRoommates || "1",
             monthlyBudget: surveyData.monthlyBudget || 1500,
-            nonNegotiables: surveyData.nonNegotiables || [],
+            preferences: surveyData.preferences || {},
             additionalNotes: surveyData.additionalNotes || "",
             submitted: surveyData.submitted || false,
           });
         }
-        */
       } catch (error) {
         console.error("Error fetching survey data:", error);
       } finally {
@@ -178,19 +224,27 @@ export default function SurveyForm({ onSubmitSuccess }: SurveyFormProps) {
     };
     
     fetchSurvey();
-  }, [/* Remove session dependency temporarily */]);
+  }, [session]);
 
-  // Submit handler
+  // Update the handleSubmit function to handle partial submissions
   const handleSubmit = async (e: React.FormEvent, finalSubmit: boolean = false) => {
     e.preventDefault();
     
-    // Validate date range before submission
+    // Validate current step before saving
+    if (!validateStep(currentStep)) {
+      return; // Don't save if validation fails
+    }
+    
+    // Only validate date range if both dates are present
     if (formData.internshipStartDate && formData.internshipEndDate) {
       const startDate = new Date(formData.internshipStartDate);
       const endDate = new Date(formData.internshipEndDate);
       
       if (startDate > endDate) {
-        alert("Start date cannot be after end date. Please adjust your dates.");
+        setValidationErrors(prev => ({
+          ...prev,
+          internshipEndDate: "End date cannot be before start date"
+        }));
         return;
       }
     }
@@ -198,17 +252,18 @@ export default function SurveyForm({ onSubmitSuccess }: SurveyFormProps) {
     setSaving(true);
     
     try {
-      // Temporarily comment out API call for testing
-      /*
-      const response = await fetch("/api/survey", {
+      // Create a copy of the formData
+      const dataToSubmit = { ...formData, submitted: finalSubmit };
+      
+      // For non-final submissions, we need to tell the server to accept partial data
+      const endpoint = finalSubmit ? "/api/survey" : "/api/survey?partial=true";
+      
+      const response = await fetch(endpoint, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({
-          ...formData,
-          submitted: finalSubmit,
-        }),
+        body: JSON.stringify(dataToSubmit),
       });
       
       const result = await response.json();
@@ -222,26 +277,7 @@ export default function SurveyForm({ onSubmitSuccess }: SurveyFormProps) {
             onSubmitSuccess();
           }
         }
-      } else {
-        alert(`Error: ${result.error}`);
-      }
-      */
-      
-      // Just simulate successful submission
-      console.log("Survey data:", formData);
-      
-      if (finalSubmit) {
-        setFormData(prev => ({ ...prev, submitted: true }));
-        
-        // Call the onSubmitSuccess callback if provided
-        if (onSubmitSuccess) {
-          onSubmitSuccess();
-        }
-      }
-      
-    } catch (error) {
-      console.error("Error saving survey:", error);
-      alert("Failed to save survey");
+      } 
     } finally {
       setSaving(false);
     }
@@ -325,7 +361,6 @@ export default function SurveyForm({ onSubmitSuccess }: SurveyFormProps) {
                   className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 p-3 text-gray-900 dark:text-gray-100 focus:border-blue-500 dark:focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
                   value={formData.gender}
                   onChange={handleInputChange}
-                  required
                 >
                   <option value="" disabled>Select your gender</option>
                   <option value="Male">Male</option>
@@ -333,6 +368,9 @@ export default function SurveyForm({ onSubmitSuccess }: SurveyFormProps) {
                   <option value="Non-Binary">Non-Binary</option>
                   <option value="Prefer not to say">Prefer not to say</option>
                 </select>
+                {validationErrors.gender && (
+                  <p className="text-red-500 text-sm mt-1">{validationErrors.gender}</p>
+                )}
               </div>
               
               {/* Rooming preference */}
@@ -372,13 +410,15 @@ export default function SurveyForm({ onSubmitSuccess }: SurveyFormProps) {
                   className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 p-3 text-gray-900 dark:text-gray-100 focus:border-blue-500 dark:focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
                   value={formData.housingRegion}
                   onChange={handleInputChange}
-                  required
                 >
                   <option value="" disabled>Select a region</option>
                   {Object.keys(HOUSING_REGIONS).map(region => (
                     <option key={region} value={region}>{region}</option>
                   ))}
                 </select>
+                {validationErrors.housingRegion && (
+                  <p className="text-red-500 text-sm mt-1">{validationErrors.housingRegion}</p>
+                )}
               </div>
               
               {/* Cities selection */}
@@ -519,8 +559,10 @@ export default function SurveyForm({ onSubmitSuccess }: SurveyFormProps) {
                   value={formData.internshipCompany}
                   onChange={handleInputChange}
                   placeholder="Enter company name"
-                  required
                 />
+                {validationErrors.internshipCompany && (
+                  <p className="text-red-500 text-sm mt-1">{validationErrors.internshipCompany}</p>
+                )}
               </div>
               
               {/* Same company preference */}
@@ -554,8 +596,10 @@ export default function SurveyForm({ onSubmitSuccess }: SurveyFormProps) {
                     value={formData.internshipStartDate}
                     onChange={handleInputChange}
                     max={formData.internshipEndDate || undefined}
-                    required
                   />
+                  {validationErrors.internshipStartDate && (
+                    <p className="text-red-500 text-sm mt-1">{validationErrors.internshipStartDate}</p>
+                  )}
                 </div>
                 
                 <div>
@@ -570,8 +614,10 @@ export default function SurveyForm({ onSubmitSuccess }: SurveyFormProps) {
                     value={formData.internshipEndDate}
                     onChange={handleInputChange}
                     min={formData.internshipStartDate || undefined}
-                    required
                   />
+                  {validationErrors.internshipEndDate && (
+                    <p className="text-red-500 text-sm mt-1">{validationErrors.internshipEndDate}</p>
+                  )}
                 </div>
               </div>
             </div>
@@ -613,6 +659,9 @@ export default function SurveyForm({ onSubmitSuccess }: SurveyFormProps) {
                     </div>
                   ))}
                 </div>
+                {validationErrors.desiredRoommates && (
+                  <p className="text-red-500 text-sm mt-1">{validationErrors.desiredRoommates}</p>
+                )}
               </div>
               
               {/* Budget slider */}
@@ -639,6 +688,9 @@ export default function SurveyForm({ onSubmitSuccess }: SurveyFormProps) {
                   <span>$2,750</span>
                   <span>&gt; $5,000</span>
                 </div>
+                {validationErrors.monthlyBudget && (
+                  <p className="text-red-500 text-sm mt-1">{validationErrors.monthlyBudget}</p>
+                )}
               </div>
               
               {/* Preferences section */}
@@ -770,9 +822,12 @@ export default function SurveyForm({ onSubmitSuccess }: SurveyFormProps) {
               <button
                 type="button"
                 onClick={() => {
-                  // Auto-save when proceeding to next step
-                  handleSubmit({ preventDefault: () => {} } as React.FormEvent, false);
-                  goToNextStep();
+                  // Validate current step before proceeding
+                  if (validateStep(currentStep)) {
+                    // Auto-save when proceeding to next step
+                    handleSubmit({ preventDefault: () => {} } as React.FormEvent, false);
+                    goToNextStep();
+                  }
                 }}
                 className="flex items-center px-5 py-2.5 rounded-lg bg-blue-500 hover:bg-blue-600 text-white transition-colors"
               >

@@ -1,69 +1,74 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/app/api/auth/[...nextauth]/route";
-import { User } from "@/models/User";
 import { dbConnect } from "@/lib/db/mongodb";
 import { SurveyResponse } from "@/models/SurveyResponse";
+import { User } from "@/models/User";
+import { Account } from "@/models/Account";
+import mongoose from "mongoose";
+
+interface AccountDocument {
+  userId: string;
+  provider: string;
+  providerAccountId: string;
+}
 
 export async function DELETE(req: Request) {
-  try {
-    // Get the current user's session
-    const session = await getServerSession(authOptions);
-
-    if (!session || !session.user) {
-      return NextResponse.json(
-        { error: "You must be signed in to delete your account" },
-        { status: 401 }
-      );
-    }
-
-    // Connect to the database
-    await dbConnect();
-
-    // Get user ID from session
-    const userId = session.user.id;
+  // @ts-ignore - Ignoring the type error with authOptions
+  const session = await getServerSession(authOptions);
     
-    if (!userId) {
-      return NextResponse.json(
-        { error: "User ID not found in session" },
-        { status: 400 }
-      );
-    }
-
-    // Delete all related data (survey responses)
-    try {
-      await SurveyResponse.deleteMany({ userId });
-    } catch (error) {
-      console.error("Error deleting survey responses:", error);
-      // Continue with deletion even if survey deletion fails
-    }
-
-    // Delete the user account
-    try {
-      const deletedUser = await User.findByIdAndDelete(userId);
-      
-      if (!deletedUser) {
-        return NextResponse.json(
-          { error: "User not found in database" },
-          { status: 404 }
-        );
-      }
-    } catch (error) {
-      console.error("Error deleting user:", error);
-      return NextResponse.json(
-        { error: "Failed to delete user from database" },
-        { status: 500 }
-      );
-    }
-
+  if (!session?.user?.email) {
     return NextResponse.json(
-      { success: true, message: "Account deleted successfully" },
-      { status: 200 }
+      { error: "You must be signed in to delete your account" },
+      { status: 401 }
     );
+  }
+
+  const userEmail = session.user.email;
+  
+  try {
+    // Connect to database
+    await dbConnect();
+    
+    // Find user by email
+    const user = await User.findOne({ email: userEmail });
+    if (!user) {
+      return NextResponse.json(
+        { error: "User not found" },
+        { status: 404 }
+      );
+    }
+    
+    const userId = user._id.toString();
+    
+    // Perform deletion operations sequentially
+    
+    // 1. Delete survey responses
+    const surveyResult = await SurveyResponse.deleteMany({ userId: userEmail });
+    
+    // 2. Delete accounts
+    const accountResult = await Account.deleteMany({ userId: userId });
+    
+    // 3. Delete user
+    const userResult = await User.deleteOne({ _id: user._id });
+    
+    return NextResponse.json({
+      success: true,
+      message: "Account deleted successfully",
+      details: {
+        surveyResponsesDeleted: surveyResult.deletedCount,
+        accountsDeleted: accountResult.deletedCount,
+        userDeleted: userResult.deletedCount
+      }
+    });
   } catch (error) {
-    console.error("Error deleting account:", error);
+    console.error("Error during account deletion:", error);
+    
     return NextResponse.json(
-      { error: "Failed to delete account: " + (error as Error).message },
+      { 
+        error: "Failed to delete account", 
+        message: error instanceof Error ? error.message : "Unknown error" 
+      },
       { status: 500 }
     );
   }

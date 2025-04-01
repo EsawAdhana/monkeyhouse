@@ -26,14 +26,6 @@ export async function GET(req: Request) {
       );
     }
 
-    // For bypass user, return default values
-    if (userId === "temp@example.com") {
-      return NextResponse.json({
-        hasSurvey: false,
-        isSubmitted: false
-      }, { status: 200 });
-    }
-
     // Connect to the database
     await dbConnect();
 

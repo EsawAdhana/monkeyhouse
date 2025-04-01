@@ -1,0 +1,6 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+Think step by step about whether a simpler, more elegant, and robust solution exists that avoids over-engineering while aligning with KISS, YAGNI, DRY, and SOLID principles. Present your solution along with your confidence level (1–10) and a rationale, but do not modify the code yet.
