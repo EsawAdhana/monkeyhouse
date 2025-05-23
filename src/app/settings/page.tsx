@@ -131,7 +131,7 @@ export default function SettingsPage() {
                   <div className="bg-white dark:bg-gray-700 rounded-lg shadow-sm border border-gray-200 dark:border-gray-600 p-4">
                     <div className="grid grid-cols-[1fr_auto] gap-y-2">
                       <div className="text-gray-600 dark:text-gray-300">First Name:</div>
-                      <div className="text-right dark:text-gray-200">{userData?.name || (surveyData?.isSubmitted ? surveyData.firstName : 'User')}</div>
+                      <div className="text-right dark:text-gray-200">{(surveyData?.isSubmitted && surveyData.firstName) ? surveyData.firstName : (userData?.name || 'User')}</div>
                       
                       <div className="text-gray-600 dark:text-gray-300">Gender:</div>
                       <div className="text-right dark:text-gray-200">{surveyData?.gender || 'Not specified'}</div>
@@ -282,7 +282,7 @@ export default function SettingsPage() {
                 />
               </div>
               <div>
-                <h3 className="font-medium text-gray-800 dark:text-gray-100">{userData?.name || (surveyData?.isSubmitted ? surveyData.firstName : 'User')}</h3>
+                <h3 className="font-medium text-gray-800 dark:text-gray-100">{(surveyData?.isSubmitted && surveyData.firstName) ? surveyData.firstName : (userData?.name || 'User')}</h3>
                 <p className="text-gray-600 dark:text-gray-400 text-sm">{session?.user?.email}</p>
               </div>
             </div>

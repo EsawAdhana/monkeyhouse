@@ -12,28 +12,57 @@ import ChatInfoModal from '@/components/ChatInfoModal';
 import { useMessageNotifications } from '@/contexts/MessageNotificationContext';
 import { formatDistance } from 'date-fns';
 import ReportModal from '@/components/ReportModal';
-import { useFirebaseRealtime } from '@/hooks/useFirebaseRealtime';
-import { 
-  messagesCollection, 
-  query, 
-  where, 
-  orderBy, 
-  doc,
-  Timestamp,
-  getDoc,
-  db
-} from '@/lib/firebase';
-import { 
-  FirebaseMessage, 
-  FirebaseConversation,
-  getConversation,
-  getMessagesByConversation,
-  markMessageAsRead as markFirebaseMessageAsRead,
-  createMessage,
-  deleteConversation as deleteFirebaseConversation,
-  enrichParticipantsWithUserData
-} from '@/lib/firebaseService';
 import { use } from 'react';
+
+// Temporary interfaces to replace Firebase types
+interface FirebaseMessage {
+  _id?: string;
+  content: string;
+  senderId: any;
+  readBy?: any[];
+  createdAt?: any;
+}
+
+// Temporary placeholder functions - these should be replaced with API calls
+const getConversation = async (id: string) => {
+  const response = await fetch(`/api/conversations/${id}`);
+  if (!response.ok) throw new Error('Failed to fetch conversation');
+  const result = await response.json();
+  return result.success ? result.data : null;
+};
+
+const getMessagesByConversation = async (id: string) => {
+  const response = await fetch(`/api/messages?conversationId=${id}`);
+  if (!response.ok) throw new Error('Failed to fetch messages');
+  const result = await response.json();
+  return result.success ? result.data : [];
+};
+
+const markFirebaseMessageAsRead = async (messageId: string, userEmail?: string) => {
+  const response = await fetch('/api/messages/mark-read', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ messageId, userEmail })
+  });
+  return response.ok;
+};
+
+const createMessage = async (messageData: any) => {
+  const response = await fetch('/api/messages', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(messageData)
+  });
+  if (!response.ok) throw new Error('Failed to create message');
+  const result = await response.json();
+  return result.success ? result.data : null;
+};
+
+const enrichParticipantsWithUserData = async (participants: any[]) => {
+  // For now, return participants as-is
+  // This should be replaced with proper API calls to enrich user data
+  return participants;
+};
 
 interface Participant {
   _id: string;
@@ -85,9 +114,9 @@ const UserAvatar = ({ size = 32, letter = null }: { size?: number, letter?: stri
 export default function ConversationPage({
   params,
 }: {
-  params: Promise<{ conversationId: string }>;
+  params: { conversationId: string };
 }) {
-  const { conversationId } = use(params);
+  const { conversationId } = params;
   const { data: session } = useSession();
   const router = useRouter();
   const [messages, setMessages] = useState<Message[]>([]);
@@ -180,6 +209,37 @@ export default function ConversationPage({
     }
   };
 
+  // Transform Firebase data to match expected format
+  const transformMessages = (result: FirebaseMessage[]) => {
+    return result.map((msg: FirebaseMessage) => ({
+      _id: msg._id as string,
+      content: msg.content,
+      senderId: typeof msg.senderId === 'string' 
+        ? { 
+            _id: msg.senderId,
+            name: '',
+            image: ''
+          }
+        : {
+            _id: msg.senderId._id || '',
+            name: msg.senderId.name || '',
+            image: msg.senderId.image || ''
+          },
+      readBy: Array.isArray(msg.readBy) 
+        ? msg.readBy.map((reader: any) => ({
+            _id: typeof reader === 'string' ? reader : reader._id || '',
+            name: typeof reader === 'string' ? '' : reader.name || '',
+            image: typeof reader === 'string' ? '' : reader.image || ''
+          }))
+        : [],
+      createdAt: msg.createdAt instanceof Date 
+        ? msg.createdAt.toISOString()
+        : typeof msg.createdAt === 'string'
+          ? msg.createdAt
+          : new Date().toISOString()
+    }));
+  };
+
   // Fetch messages
   const fetchMessages = async () => {
     try {
@@ -187,37 +247,7 @@ export default function ConversationPage({
       const result = await getMessagesByConversation(conversationId);
       
       if (result && result.length > 0) {
-        // Transform Firebase data to match expected format
-        const messageData = result.map((msg: FirebaseMessage) => ({
-          _id: msg._id as string,
-          content: msg.content,
-          senderId: typeof msg.senderId === 'string' 
-            ? { 
-                _id: msg.senderId,
-                name: '',
-                image: ''
-              }
-            : {
-                _id: msg.senderId._id || '',
-                name: msg.senderId.name || '',
-                image: msg.senderId.image || ''
-              },
-          readBy: Array.isArray(msg.readBy) 
-            ? msg.readBy.map((reader: any) => ({
-                _id: typeof reader === 'string' ? reader : reader._id || '',
-                name: typeof reader === 'string' ? '' : reader.name || '',
-                image: typeof reader === 'string' ? '' : reader.image || ''
-              }))
-            : [],
-          createdAt: msg.createdAt instanceof Timestamp 
-            ? msg.createdAt.toDate().toISOString()
-            : msg.createdAt instanceof Date
-              ? msg.createdAt.toISOString()
-              : typeof msg.createdAt === 'string'
-                ? msg.createdAt
-                : new Date().toISOString()
-        }));
-        
+        const messageData = transformMessages(result);
         setMessages(messageData);
         scrollToBottom();
       }
@@ -228,132 +258,15 @@ export default function ConversationPage({
     }
   };
 
-  // Set up real-time listener for messages
-  const messagesQuery = useCallback(() => {
-    return query(
-      messagesCollection,
-      where('conversationId', '==', conversationId),
-      orderBy('createdAt', 'asc')
-    );
-  }, [conversationId]);
-
-  // Store the query result to avoid recreation on every render
-  const queryRef = useRef(messagesQuery());
-
-  // Update the query ref when conversation ID changes
+  // Poll for new messages every 3 seconds
   useEffect(() => {
-    queryRef.current = messagesQuery();
-  }, [messagesQuery]);
-
-  // Track which messages have already been marked as read
-  const readMessageIdsRef = useRef<Set<string>>(new Set());
-
-  // Use Firebase real-time hook
-  const { data: realtimeMessages } = useFirebaseRealtime<FirebaseMessage[]>({
-    subscriptionType: 'query',
-    target: queryRef.current,
-    enabled: !!session?.user && !!conversationId,
-    onData: (data) => {
-      if (!data || data.length === 0) return;
-      
-      // Transform Firebase data but preserve existing profile info
-      setMessages(prevMessages => {
-        // Create a map of existing messages by ID for quick lookup
-        const existingMessagesMap = new Map(
-          prevMessages.map(msg => [msg._id, msg])
-        );
-        
-        // Track new messages that need profile data
-        const newMessageIds = new Set<string>();
-        
-        // Process new messages while preserving profile data from existing messages
-        const updatedMessages = data.map((msg: FirebaseMessage) => {
-          const messageId = msg._id as string;
-          const existingMessage = existingMessagesMap.get(messageId);
-          
-          // Start with basic sender data
-          let senderData = typeof msg.senderId === 'string' 
-            ? { 
-                _id: msg.senderId,
-                name: '',
-                image: ''
-              }
-            : {
-                _id: msg.senderId._id || '',
-                name: msg.senderId.name || '',
-                image: msg.senderId.image || ''
-              };
-          
-          // For receiver, if this is a new message that lacks profile data, track it for loading
-          if (!existingMessage && senderData._id !== session?.user?.email) {
-            // New message from someone else, check if we have complete profile data
-            if (!senderData.name || !senderData.image) {
-              newMessageIds.add(messageId);
-            }
-          }
-          
-          // If we have existing message data for this ID, preserve the sender's profile information
-          if (existingMessage && existingMessage.senderId._id === senderData._id) {
-            senderData = {
-              ...senderData,
-              name: existingMessage.senderId.name || senderData.name,
-              image: existingMessage.senderId.image || senderData.image,
-              profile: existingMessage.senderId.profile || undefined
-            };
-          }
-          
-          // Process readBy data
-          const readBy = Array.isArray(msg.readBy) 
-            ? msg.readBy.map((reader: any) => {
-                const readerId = typeof reader === 'string' ? reader : reader._id || '';
-                // Try to find existing reader data to preserve
-                const existingReader = existingMessage?.readBy.find(r => r._id === readerId);
-                
-                return {
-                  _id: readerId,
-                  name: existingReader?.name || (typeof reader === 'string' ? '' : reader.name || ''),
-                  image: existingReader?.image || (typeof reader === 'string' ? '' : reader.image || '')
-                };
-              })
-            : [];
-          
-          // Create the processed message with preserved data where possible
-          return {
-            _id: messageId,
-            content: msg.content,
-            senderId: senderData,
-            readBy: readBy,
-            createdAt: msg.createdAt instanceof Timestamp 
-              ? msg.createdAt.toDate().toISOString()
-              : msg.createdAt instanceof Date
-                ? msg.createdAt.toISOString()
-                : typeof msg.createdAt === 'string'
-                  ? msg.createdAt
-                  : new Date().toISOString()
-          };
-        });
-        
-        // Update the pending messages state with new messages that need profile data
-        if (newMessageIds.size > 0) {
-          setPendingMessages(prev => {
-            const updatedPending = new Set(prev);
-            newMessageIds.forEach(id => updatedPending.add(id));
-            return updatedPending;
-          });
-          
-          // For each new message, fetch the profile data
-          newMessageIds.forEach(messageId => {
-            const messageData = updatedMessages.find(m => m._id === messageId);
-            if (messageData) {
-              fetchProfileForMessage(messageId, messageData.senderId._id);
-            }
-          });
-        }
-        
-        return updatedMessages;
-      });
-    }
-  });
+    if (!session?.user || !conversationId) return;
+    
+    fetchMessages();
+    
+    const interval = setInterval(fetchMessages, 3000);
+    return () => clearInterval(interval);
+  }, [session?.user, conversationId]);
 
   // Function to fetch profile data for a specific message sender
   const fetchProfileForMessage = async (messageId: string, senderId: string) => {
@@ -372,7 +285,7 @@ export default function ConversationPage({
             const profileData = await profileResponse.json();
             
             // Update the message with the profile data
-            setMessages(prev => prev.map(message => {
+            setMessages(prev => prev.map((message: Message) => {
               if (message._id === messageId) {
                 // Create enhanced sender data
                 const enhancedSender = {
@@ -407,24 +320,22 @@ export default function ConversationPage({
       }
     } catch (error) {
       console.error('Error fetching profile for message:', error);
-      // Remove from pending state after a timeout to prevent indefinite loading
-      setTimeout(() => {
-        setPendingMessages(prev => {
-          const updated = new Set(prev);
-          updated.delete(messageId);
-          return updated;
-        });
-      }, 5000);
+      // Remove from pending even on error to avoid infinite retries
+      setPendingMessages(prev => {
+        const updated = new Set(prev);
+        updated.delete(messageId);
+        return updated;
+      });
     }
   };
 
   // Handle marking messages as read in a separate effect
   useEffect(() => {
-    if (!realtimeMessages || !session?.user?.email) return;
+    if (!messages || !session?.user?.email) return;
     
     // Find unread messages that haven't been processed yet
     const currentUserEmail = session.user.email;
-    const unreadMessages = realtimeMessages.filter((msg: FirebaseMessage) => {
+    const unreadMessages = messages.filter((msg: Message) => {
       if (!msg._id) return false;
       
       const senderId = typeof msg.senderId === 'string' ? msg.senderId : msg.senderId._id;
@@ -432,17 +343,15 @@ export default function ConversationPage({
       
       // Check if this message is unread and hasn't been processed yet
       return senderId !== currentUserEmail && 
-             !readBy.includes(currentUserEmail) && 
-             !readMessageIdsRef.current.has(msg._id);
+             !readBy.includes(currentUserEmail);
     });
     
     // Mark unread messages as read (batched)
     if (unreadMessages.length > 0) {
       // Batch these operations
-      const markReadPromises = unreadMessages.map(async (msg: FirebaseMessage) => {
+      const markReadPromises = unreadMessages.map(async (msg: Message) => {
         if (msg._id) {
-          readMessageIdsRef.current.add(msg._id);
-          return markMessageAsRead(msg._id);
+          await markMessageAsRead(msg._id);
         }
       });
       
@@ -451,7 +360,7 @@ export default function ConversationPage({
         scrollToBottom();
       });
     }
-  }, [realtimeMessages, session?.user?.email]);
+  }, [messages, session?.user?.email]);
 
   // Mark a specific message as read
   const markMessageAsRead = async (messageId: string) => {
@@ -471,14 +380,14 @@ export default function ConversationPage({
     if (!session?.user?.email) return '';
     
     try {
-      // Try to get the user's survey data first
-      const surveyRef = doc(db, 'surveys', session.user.email);
-      const surveyDoc = await getDoc(surveyRef);
+      // Use API call instead of direct Firebase access
+      const response = await fetch(`/api/user?email=${encodeURIComponent(session.user.email)}`);
       
-      if (surveyDoc.exists()) {
-        const surveyData = surveyDoc.data();
-        if (surveyData.firstName && typeof surveyData.firstName === 'string' && surveyData.firstName.trim()) {
-          return surveyData.firstName.trim();
+      if (response.ok) {
+        const result = await response.json();
+        
+        if (result.surveyData?.firstName && typeof result.surveyData.firstName === 'string' && result.surveyData.firstName.trim()) {
+          return result.surveyData.firstName.trim();
         }
       }
       

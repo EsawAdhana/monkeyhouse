@@ -4,21 +4,15 @@ import { useEffect, useState } from 'react';
 import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import { SurveyFormData } from '@/constants/survey-constants';
+import Link from 'next/link';
 import Image from 'next/image';
 import { FiUsers, FiHome, FiDollarSign, FiCalendar, FiList, FiStar, FiFlag, FiX, FiMapPin, FiMessageCircle, FiInfo, FiBarChart2, FiBriefcase } from 'react-icons/fi';
 import ReportUserModal from '@/components/ReportUserModal';
 import UserProfileModal from '@/components/UserProfileModal';
-import Modal from '@/components/Modal';
-import { 
-  createConversation, 
-  getSurveyByUser, 
-  getRecommendationsByUser,
-  getUser 
-} from '@/lib/firebaseService';
 
 interface CompatibilityMatch {
   userEmail: string;
-  userProfile: {
+  userProfile?: {
     name?: string;
     email: string;
     image?: string;
@@ -75,14 +69,18 @@ export default function DashboardPage() {
   useEffect(() => {
     const fetchSurveyData = async () => {
       try {
-        // Replace fetch API call with direct Firebase function
-        const result = await getSurveyByUser(session?.user?.email as string);
+        // Use API route instead of direct Firebase function
+        const response = await fetch('/api/survey');
+        if (!response.ok) {
+          throw new Error('Failed to fetch survey data');
+        }
         
-        if (result) {
-          setSurveyData(result as unknown as SurveyFormData);
+        const result = await response.json();
+        if (result.success && result.data) {
+          setSurveyData(result.data as SurveyFormData);
           
           // If the survey is submitted, fetch recommendations
-          if (result.isSubmitted) {
+          if (result.data.isSubmitted) {
             fetchRecommendations();
           }
         }
@@ -96,15 +94,50 @@ export default function DashboardPage() {
     const fetchRecommendations = async () => {
       setRecommendationsLoading(true);
       try {
-        // Replace fetch API call with direct Firebase function
-        const result = await getRecommendationsByUser(
-          session?.user?.email as string, 
-          showTestUsers
-        );
+        // Use API route instead of direct Firebase function
+        const response = await fetch(`/api/recommendations?showTestUsers=${showTestUsers}`);
+        if (!response.ok) {
+          throw new Error('Failed to fetch recommendations');
+        }
         
-        if (result && result.matches) {
-          // Cast the API response to the expected type
-          setRecommendations(result.matches as unknown as CompatibilityMatch[]);
+        const result = await response.json();
+        if (result.success && result.data && result.data.matches) {
+          // Transform the recommendations to ensure userProfile is populated
+          const transformedMatches = await Promise.all(
+            result.data.matches.map(async (match: any) => {
+              // Get user profile data for each match
+              const userResponse = await fetch(`/api/user?email=${encodeURIComponent(match.userEmail)}`);
+              let userProfile = {
+                email: match.userEmail,
+                name: '',
+                image: ''
+              };
+              let fullProfile = null;
+              
+              if (userResponse.ok) {
+                const userData = await userResponse.json();
+                if (userData.userProfile) {
+                  userProfile = {
+                    email: match.userEmail,
+                    name: userData.userProfile.name || '',
+                    image: userData.userProfile.image || ''
+                  };
+                }
+                // Include survey data as fullProfile for firstName access
+                if (userData.surveyData) {
+                  fullProfile = userData.surveyData;
+                }
+              }
+              
+              return {
+                ...match,
+                userProfile,
+                fullProfile
+              } as CompatibilityMatch;
+            })
+          );
+          
+          setRecommendations(transformedMatches);
         }
       } catch (error) {
         console.error('Error fetching recommendations:', error);
@@ -122,15 +155,25 @@ export default function DashboardPage() {
     try {
       setLoadingUserDetails(true);
       
-      // Replace fetch API call with direct Firebase function
-      const userData = await getUser(match.userEmail);
-      const surveyData = await getSurveyByUser(match.userEmail);
+      // Use API route instead of direct Firebase function
+      const userResponse = await fetch(`/api/user?email=${encodeURIComponent(match.userEmail)}`);
+      const surveyResponse = await fetch(`/api/survey?email=${encodeURIComponent(match.userEmail)}`);
       
-      if (!userData) {
+      if (!userResponse.ok) {
         console.error('Failed to fetch user details');
         // Still show the modal with limited information
         setSelectedUserDetails(match);
         return;
+      }
+      
+      const userData = await userResponse.json();
+      let surveyData = null;
+      
+      if (surveyResponse.ok) {
+        const surveyResult = await surveyResponse.json();
+        if (surveyResult.success && surveyResult.data) {
+          surveyData = surveyResult.data;
+        }
       }
       
       setSelectedUserDetails({
@@ -185,13 +228,17 @@ export default function DashboardPage() {
   
   // Helper function to get user display name
   const getName = (userProfile?: {name?: string, email?: string}, fullProfile?: any): string => {
-    // Use firstName from the survey data if available (highest priority)
+    // ALWAYS prioritize firstName from the survey data first (highest priority)
     if (fullProfile?.firstName && typeof fullProfile.firstName === 'string' && fullProfile.firstName.trim() !== '') {
       return fullProfile.firstName;
     }
     
-    // Use name from basic user profile if available and not default/empty
+    // Only use userProfile.name if it's clearly not a Google full name (no spaces) and not empty/default
     if (userProfile?.name && userProfile.name !== 'User' && userProfile.name.trim() !== '') {
+      // If the name contains a space, it's likely a full name from Google, so extract first name
+      if (userProfile.name.includes(' ')) {
+        return userProfile.name.split(' ')[0];
+      }
       return userProfile.name;
     }
     
@@ -227,15 +274,26 @@ export default function DashboardPage() {
 
     setIsCreatingGroup(true);
     try {
-      // Replace fetch API call with direct Firebase function
-      const result = await createConversation({
-        participants: [session?.user?.email, ...selectedUsers.map(u => u.userEmail)],
-        isGroup: true,
-        name: groupName.trim(),
+      // Use API route instead of direct Firebase function
+      const response = await fetch('/api/conversations', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          participants: [session?.user?.email, ...selectedUsers.map(u => u.userEmail)],
+          isGroup: true,
+          name: groupName.trim(),
+        }),
       });
 
-      if (result && result._id) {
-        router.push(`/messages/${result._id}`);
+      if (!response.ok) {
+        throw new Error('Failed to create group chat');
+      }
+
+      const result = await response.json();
+      if (result.success && result.data && result.data._id) {
+        router.push(`/messages/${result.data._id}`);
       } else {
         throw new Error('Failed to create group chat');
       }
@@ -422,7 +480,7 @@ export default function DashboardPage() {
                       >
                         <div className="flex items-center mb-4">
                           <div className="mr-3">
-                            {match.userProfile.image ? (
+                            {match.userProfile?.image ? (
                               <Image 
                                 src={match.userProfile.image} 
                                 alt={displayName} 
@@ -539,7 +597,7 @@ export default function DashboardPage() {
               <div className="p-6">
                 <div className="mb-6 flex items-center">
                   <div className="mr-4">
-                    {selectedBreakdown.userProfile.image ? (
+                    {selectedBreakdown.userProfile?.image ? (
                       <Image 
                         src={selectedBreakdown.userProfile.image} 
                         alt={getName(selectedBreakdown.userProfile, selectedBreakdown.fullProfile)} 

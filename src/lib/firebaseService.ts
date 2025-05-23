@@ -1,26 +1,6 @@
-import { 
-  db,
-  usersCollection,
-  conversationsCollection,
-  messagesCollection,
-  doc,
-  setDoc,
-  getDoc,
-  getDocs,
-  query,
-  where,
-  orderBy,
-  Timestamp,
-  collection,
-  updateDoc,
-  deleteDoc,
-  addDoc
-} from './firebase';
+import { adminDb } from './firebase-admin';
 import { User } from 'next-auth';
 import { getRecommendedMatches } from '@/utils/recommendationEngine';
-
-// Add a new collection reference for surveys
-const surveysCollection = collection(db, 'surveys');
 
 // Firebase data interfaces
 export interface FirebaseUser {
@@ -28,8 +8,8 @@ export interface FirebaseUser {
   email: string;
   name?: string;
   image?: string;
-  createdAt?: Date | Timestamp;
-  updatedAt?: Date | Timestamp;
+  createdAt?: any;
+  updatedAt?: any;
 }
 
 export interface FirebaseMessage {
@@ -38,8 +18,8 @@ export interface FirebaseMessage {
   senderId: string | FirebaseUser | { _id: string; name?: string; image?: string; };
   conversationId: string;
   readBy?: Array<string | FirebaseUser | { _id: string; name?: string; image?: string; }>;
-  createdAt?: Date | Timestamp;
-  updatedAt?: Date | Timestamp;
+  createdAt?: any;
+  updatedAt?: any;
 }
 
 export interface FirebaseConversation {
@@ -48,60 +28,66 @@ export interface FirebaseConversation {
   lastMessage?: string | FirebaseMessage;
   name?: string | null;
   isGroup?: boolean;
-  createdAt?: Date | Timestamp;
-  updatedAt?: Date | Timestamp;
+  createdAt?: any;
+  updatedAt?: any;
 }
 
 // User Methods
 export const createOrUpdateUser = async (user: User | FirebaseUser) => {
   if (!user.email) throw new Error('User email is required');
   
-  const userRef = doc(usersCollection, user.email);
-  const userDoc = await getDoc(userRef);
+  const userRef = adminDb.collection('users').doc(user.email);
+  const userDoc = await userRef.get();
   
   // Check if the user has a survey with firstName
-  const surveyRef = doc(surveysCollection, user.email);
-  const surveyDoc = await getDoc(surveyRef);
+  const surveyRef = adminDb.collection('surveys').doc(user.email);
+  const surveyDoc = await surveyRef.get();
   let surveyFirstName = '';
   
-  if (surveyDoc.exists()) {
+  if (surveyDoc.exists) {
     const surveyData = surveyDoc.data();
-    if (surveyData.firstName && typeof surveyData.firstName === 'string') {
+    if (surveyData?.firstName && typeof surveyData.firstName === 'string') {
       surveyFirstName = surveyData.firstName.trim();
     }
   }
   
+  const now = new Date();
   const userData: FirebaseUser = {
     email: user.email,
     name: surveyFirstName || user.name || '',
     image: user.image || '',
-    updatedAt: Timestamp.now()
+    updatedAt: now
   };
   
-  if (!userDoc.exists()) {
+  if (!userDoc.exists) {
     // Create new user
-    userData.createdAt = Timestamp.now();
-    await setDoc(userRef, userData);
+    userData.createdAt = now;
+    await userRef.set(userData);
   } else {
     // Update existing user - but only overwrite name if it's provided and non-empty
     const updateData: Partial<FirebaseUser> = {
-      updatedAt: Timestamp.now()
+      updatedAt: now
     };
     
     if (user.image) updateData.image = user.image;
     
-    // Prioritize firstName from survey, then name from user object
+    // Always prioritize firstName from survey over any other name
     if (surveyFirstName) {
       updateData.name = surveyFirstName;
     } else if (user.name && user.name.trim() !== '') {
-      updateData.name = user.name;
+      // Only update name from user object if no survey firstName exists
+      const existingUserData = userDoc.data() as FirebaseUser;
+      // Don't overwrite existing name if it might be a firstName from survey
+      if (!existingUserData.name || existingUserData.name.trim() === '') {
+        updateData.name = user.name;
+      }
     }
     
-    await updateDoc(userRef, updateData);
+    await userRef.update(updateData);
     
     // Return the updated user data
-    const updatedDoc = await getDoc(userRef);
-    if (updatedDoc.exists()) {
+    const updatedDoc = await userRef.get();
+    if (updatedDoc.exists) {
       return {
         _id: user.email,
         ...updatedDoc.data()
@@ -116,10 +102,10 @@ export const createOrUpdateUser = async (user: User | FirebaseUser) => {
 };
 
 export const getUser = async (email: string) => {
-  const userRef = doc(usersCollection, email);
-  const userDoc = await getDoc(userRef);
+  const userRef = adminDb.collection('users').doc(email);
+  const userDoc = await userRef.get();
   
-  if (!userDoc.exists()) {
+  if (!userDoc.exists) {
     return null;
   }
   
@@ -131,14 +117,14 @@ export const getUser = async (email: string) => {
 
 // Conversation Methods
 export const createConversation = async (conversation: Omit<FirebaseConversation, '_id' | 'createdAt' | 'updatedAt'>) => {
-  const now = Timestamp.now();
+  const now = new Date();
   const conversationData = {
     ...conversation,
     createdAt: now,
     updatedAt: now
   };
   
-  const docRef = await addDoc(conversationsCollection, conversationData);
+  const docRef = await adminDb.collection('conversations').add(conversationData);
   
   return {
     _id: docRef.id,
@@ -147,10 +133,10 @@ export const createConversation = async (conversation: Omit<FirebaseConversation
 };
 
 export const getConversation = async (conversationId: string) => {
-  const conversationRef = doc(conversationsCollection, conversationId);
-  const conversationDoc = await getDoc(conversationRef);
+  const conversationRef = adminDb.collection('conversations').doc(conversationId);
+  const conversationDoc = await conversationRef.get();
   
-  if (!conversationDoc.exists()) {
+  if (!conversationDoc.exists) {
     return null;
   }
   
@@ -161,13 +147,11 @@ export const getConversation = async (conversationId: string) => {
 };
 
 export const getConversationsByUser = async (userEmail: string) => {
-  const q = query(
-    conversationsCollection,
-    where('participants', 'array-contains', userEmail),
-    orderBy('updatedAt', 'desc')
-  );
+  const querySnapshot = await adminDb.collection('conversations')
+    .where('participants', 'array-contains', userEmail)
+    .orderBy('updatedAt', 'desc')
+    .get();
   
-  const querySnapshot = await getDocs(q);
   const conversations: FirebaseConversation[] = [];
   
   querySnapshot.forEach((doc) => {
@@ -181,10 +165,10 @@ export const getConversationsByUser = async (userEmail: string) => {
 };
 
 export const updateConversation = async (conversationId: string, data: Partial<FirebaseConversation>) => {
-  const conversationRef = doc(conversationsCollection, conversationId);
-  await updateDoc(conversationRef, {
+  const conversationRef = adminDb.collection('conversations').doc(conversationId);
+  await conversationRef.update({
     ...data,
-    updatedAt: Timestamp.now()
+    updatedAt: new Date()
   });
   
   return {
@@ -195,63 +179,55 @@ export const updateConversation = async (conversationId: string, data: Partial<F
 
 export const deleteConversation = async (conversationId: string) => {
   // Delete all messages in the conversation
-  const messagesQuery = query(
-    messagesCollection,
-    where('conversationId', '==', conversationId)
-  );
+  const messagesSnapshot = await adminDb.collection('messages')
+    .where('conversationId', '==', conversationId)
+    .get();
   
-  const messagesSnapshot = await getDocs(messagesQuery);
-  const deletionPromises = messagesSnapshot.docs.map(doc => deleteDoc(doc.ref));
+  const batch = adminDb.batch();
   
-  await Promise.all(deletionPromises);
+  messagesSnapshot.forEach((doc) => {
+    batch.delete(doc.ref);
+  });
   
-  // Delete the conversation document
-  const conversationRef = doc(conversationsCollection, conversationId);
-  await deleteDoc(conversationRef);
+  // Delete the conversation
+  const conversationRef = adminDb.collection('conversations').doc(conversationId);
+  batch.delete(conversationRef);
   
-  return { success: true };
+  await batch.commit();
 };
 
 // Message Methods
 export const createMessage = async (message: Omit<FirebaseMessage, '_id' | 'createdAt' | 'updatedAt'>) => {
-  const now = Timestamp.now();
-  
-  // Ensure senderId is properly handled as either string or object
-  let processedMessage: any = {
+  const now = new Date();
+  const messageData = {
     ...message,
-    readBy: message.readBy || [],
     createdAt: now,
     updatedAt: now
   };
   
-  // Convert sender object to string ID if needed
-  if (typeof message.senderId === 'object' && message.senderId !== null && '_id' in message.senderId) {
-    processedMessage.senderId = message.senderId._id;
-  }
+  const docRef = await adminDb.collection('messages').add(messageData);
   
-  const docRef = await addDoc(messagesCollection, processedMessage);
-  
-  // Update the conversation's lastMessage
-  const conversationRef = doc(conversationsCollection, message.conversationId);
-  await updateDoc(conversationRef, {
-    lastMessage: docRef.id,
+  // Update the conversation's lastMessage and updatedAt
+  await updateConversation(message.conversationId, {
+    lastMessage: {
+      _id: docRef.id,
+      ...messageData
+    },
     updatedAt: now
   });
   
   return {
     _id: docRef.id,
-    ...processedMessage
+    ...messageData
   };
 };
 
 export const getMessagesByConversation = async (conversationId: string) => {
-  const q = query(
-    messagesCollection,
-    where('conversationId', '==', conversationId),
-    orderBy('createdAt', 'asc')
-  );
+  const querySnapshot = await adminDb.collection('messages')
+    .where('conversationId', '==', conversationId)
+    .orderBy('createdAt', 'asc')
+    .get();
   
-  const querySnapshot = await getDocs(q);
   const messages: FirebaseMessage[] = [];
   
   querySnapshot.forEach((doc) => {
@@ -261,20 +237,48 @@ export const getMessagesByConversation = async (conversationId: string) => {
     } as FirebaseMessage);
   });
   
-  return messages;
+  // Enrich messages with user data
+  const enrichedMessages = await Promise.all(messages.map(async (message) => {
+    let enrichedSenderId = message.senderId;
+    
+    // If senderId is a string (email), fetch user data
+    if (typeof message.senderId === 'string') {
+      try {
+        const userData = await getUser(message.senderId);
+        const surveyData = await getSurveyByUser(message.senderId);
+        
+        enrichedSenderId = {
+          _id: message.senderId,
+          name: (surveyData as any)?.firstName || userData?.name || '',
+          image: userData?.image || ''
+        };
+      } catch (error) {
+        console.error('Error enriching sender data:', error);
+        // Fallback to basic structure
+        enrichedSenderId = {
+          _id: message.senderId,
+          name: '',
+          image: ''
+        };
+      }
+    }
+    
+    return {
+      ...message,
+      senderId: enrichedSenderId
+    };
+  }));
+  
+  return enrichedMessages;
 };
 
-export const getNewMessagesSince = async (conversationId: string, timestamp: Date | Timestamp) => {
-  const firestoreTimestamp = timestamp instanceof Date ? Timestamp.fromDate(timestamp) : timestamp;
+export const getNewMessagesSince = async (conversationId: string, timestamp: Date) => {
+  const querySnapshot = await adminDb.collection('messages')
+    .where('conversationId', '==', conversationId)
+    .where('createdAt', '>', timestamp)
+    .orderBy('createdAt', 'asc')
+    .get();
   
-  const q = query(
-    messagesCollection,
-    where('conversationId', '==', conversationId),
-    where('createdAt', '>', firestoreTimestamp),
-    orderBy('createdAt', 'asc')
-  );
-  
-  const querySnapshot = await getDocs(q);
   const messages: FirebaseMessage[] = [];
   
   querySnapshot.forEach((doc) => {
@@ -288,97 +292,96 @@ export const getNewMessagesSince = async (conversationId: string, timestamp: Dat
 };
 
 export const markMessageAsRead = async (messageId: string, userEmail: string) => {
-  const messageRef = doc(messagesCollection, messageId);
-  const messageDoc = await getDoc(messageRef);
+  const messageRef = adminDb.collection('messages').doc(messageId);
+  const messageDoc = await messageRef.get();
   
-  if (!messageDoc.exists()) {
+  if (!messageDoc.exists) {
     throw new Error('Message not found');
   }
   
   const messageData = messageDoc.data() as FirebaseMessage;
   const readBy = Array.isArray(messageData.readBy) ? messageData.readBy : [];
   
-  // Check if the user has already read this message
-  if (readBy.some(reader => 
-    typeof reader === 'string' ? reader === userEmail : reader._id === userEmail
-  )) {
-    // Already marked as read
-    return;
-  }
-  
-  // Add user to readBy array
-  await updateDoc(messageRef, {
-    readBy: [...readBy, userEmail],
-    updatedAt: Timestamp.now()
+  // Check if user already marked as read
+  const alreadyRead = readBy.some((reader) => {
+    if (typeof reader === 'string') {
+      return reader === userEmail;
+    } else if (typeof reader === 'object' && reader._id) {
+      return reader._id === userEmail;
+    }
+    return false;
   });
   
-  return true;
+  if (!alreadyRead) {
+    readBy.push(userEmail);
+    await messageRef.update({ readBy });
+  }
 };
 
 export const getUnreadMessages = async (userEmail: string) => {
-  // Get all conversations where the user is a participant
-  const conversationsQuery = query(
-    conversationsCollection,
-    where('participants', 'array-contains', userEmail)
-  );
+  // Get all conversations where user is a participant
+  const conversationsSnapshot = await adminDb.collection('conversations')
+    .where('participants', 'array-contains', userEmail)
+    .get();
   
-  const conversationsSnapshot = await getDocs(conversationsQuery);
-  const conversationIds: string[] = [];
+  const unreadByConversation: { [conversationId: string]: number } = {};
+  let totalUnreadCount = 0;
   
-  conversationsSnapshot.forEach(doc => {
-    conversationIds.push(doc.id);
-  });
-  
-  // If there are no conversations, return empty result
-  if (conversationIds.length === 0) {
-    return { total: 0, byConversation: [] };
+  // For each conversation, count unread messages
+  for (const conversationDoc of conversationsSnapshot.docs) {
+    const conversationId = conversationDoc.id;
+    
+    // Get all messages in this conversation
+    const messagesSnapshot = await adminDb.collection('messages')
+      .where('conversationId', '==', conversationId)
+      .get();
+    
+    let unreadCount = 0;
+    
+    messagesSnapshot.forEach((messageDoc) => {
+      const messageData = messageDoc.data() as FirebaseMessage;
+      
+      // Skip messages sent by the current user
+      if (typeof messageData.senderId === 'string' && messageData.senderId === userEmail) {
+        return;
+      } else if (typeof messageData.senderId === 'object' && messageData.senderId._id === userEmail) {
+        return;
+      }
+      
+      // Check if message is read by current user
+      const readBy = Array.isArray(messageData.readBy) ? messageData.readBy : [];
+      const isRead = readBy.some((reader) => {
+        if (typeof reader === 'string') {
+          return reader === userEmail;
+        } else if (typeof reader === 'object' && reader._id) {
+          return reader._id === userEmail;
+        }
+        return false;
+      });
+      
+      if (!isRead) {
+        unreadCount++;
+      }
+    });
+    
+    if (unreadCount > 0) {
+      unreadByConversation[conversationId] = unreadCount;
+      totalUnreadCount += unreadCount;
+    }
   }
   
-  // Get all messages where the user hasn't read them yet
-  const messagesQuery = query(
-    messagesCollection,
-    where('conversationId', 'in', conversationIds),
-    where('senderId', '!=', userEmail)
-  );
-  
-  const messagesSnapshot = await getDocs(messagesQuery);
-  let totalCount = 0;
-  const unreadByConversation: { conversationId: string; unreadCount: number }[] = [];
-  
-  // Count unread messages by conversation
-  messagesSnapshot.forEach(doc => {
-    const message = doc.data() as FirebaseMessage;
-    const readBy = Array.isArray(message.readBy) ? message.readBy : [];
-    
-    if (!readBy.includes(userEmail)) {
-      totalCount++;
-      
-      const conversationId = message.conversationId;
-      const existing = unreadByConversation.find(item => item.conversationId === conversationId);
-      
-      if (existing) {
-        existing.unreadCount++;
-      } else {
-        unreadByConversation.push({
-          conversationId,
-          unreadCount: 1
-        });
-      }
-    }
-  });
-  
   return {
-    total: totalCount,
-    byConversation: unreadByConversation
+    totalUnreadCount,
+    unreadByConversation
   };
 };
 
 // Survey Methods
 export const getSurveyByUser = async (userEmail: string) => {
-  const surveyRef = doc(surveysCollection, userEmail);
-  const surveyDoc = await getDoc(surveyRef);
+  const surveyRef = adminDb.collection('surveys').doc(userEmail);
+  const surveyDoc = await surveyRef.get();
   
-  if (!surveyDoc.exists()) {
+  if (!surveyDoc.exists) {
     return null;
   }
   
@@ -389,146 +392,112 @@ export const getSurveyByUser = async (userEmail: string) => {
 };
 
 export const createOrUpdateSurvey = async (userEmail: string, surveyData: any) => {
-  const surveyRef = doc(surveysCollection, userEmail);
-  const now = Timestamp.now();
+  const surveyRef = adminDb.collection('surveys').doc(userEmail);
+  const now = new Date();
   
-  // Ensure userEmail is included in the survey data
-  const updatedData = {
+  const dataToSave = {
     ...surveyData,
-    userEmail: userEmail, // Always add/overwrite the userEmail field
+    userEmail,
     updatedAt: now
   };
   
-  const surveyDoc = await getDoc(surveyRef);
+  const surveyDoc = await surveyRef.get();
   
-  if (!surveyDoc.exists()) {
+  if (!surveyDoc.exists) {
     // Create new survey
-    await setDoc(surveyRef, {
-      ...updatedData,
-      createdAt: now,
-      isSubmitted: true,
-    });
+    dataToSave.createdAt = now;
+    await surveyRef.set(dataToSave);
   } else {
     // Update existing survey
-    await updateDoc(surveyRef, updatedData);
+    await surveyRef.update(dataToSave);
   }
   
   return {
     _id: userEmail,
-    ...updatedData
+    ...dataToSave
   };
 };
 
 // Recommendation Methods
 export const getRecommendationsByUser = async (userEmail: string, showTestUsers: boolean = false) => {
   try {
-    // Use the recommendation engine to get matches
-    const matchesResult = await getRecommendedMatches(userEmail, undefined, undefined, true, showTestUsers);
-    
-    // Get user data for each match
-    const enrichedMatches = await Promise.all(
-      matchesResult
-        // Filter out any matches with empty or undefined userEmail
-        .filter(match => match.userEmail && match.userEmail.trim() !== '')
-        .map(async (match) => {
-          const otherUserEmail = match.userEmail;
-          
-          // Get user profile info
-          const userDoc = await getUser(otherUserEmail);
-          
-          // Get the full survey data
-          const surveyRef = doc(surveysCollection, otherUserEmail);
-          const surveyDoc = await getDoc(surveyRef);
-          const surveyData = surveyDoc.exists() ? surveyDoc.data() : {};
-          
-          return {
-            userEmail: otherUserEmail,
-            userProfile: {
-              name: userDoc?.name || 'User',
-              email: otherUserEmail,
-              image: userDoc?.image || ''
-            },
-            fullProfile: surveyData,
-            score: match.score,
-            compatibilityDetails: match.compatibilityDetails,
-            explanations: match.explanations
-          };
-        })
+    // Get recommendations using the existing utility function
+    const matches = await getRecommendedMatches(
+      userEmail,
+      undefined, // testMinCompatibilityScore
+      undefined, // filterEmails
+      true, // useEnhancedScoring
+      showTestUsers
     );
     
-    return { matches: enrichedMatches };
+    return {
+      matches,
+      totalMatches: matches.length
+    };
   } catch (error) {
     console.error('Error getting recommendations:', error);
-    return { matches: [] };
+    throw error;
   }
 };
 
+// Search Methods
 export const searchUsers = async (searchQuery: string, currentUserEmail: string) => {
   try {
-    // Get all users
-    const querySnapshot = await getDocs(usersCollection);
-    const users: FirebaseUser[] = [];
+    // Search in surveys collection by firstName
+    const surveysSnapshot = await adminDb.collection('surveys')
+      .where('isSubmitted', '==', true)
+      .get();
     
-    querySnapshot.forEach((doc) => {
-      const user = {
-        _id: doc.id,
-        ...doc.data()
-      } as FirebaseUser;
+    const users: any[] = [];
+    
+    surveysSnapshot.forEach((doc) => {
+      const surveyData = doc.data();
+      const userEmail = surveyData.userEmail || doc.id;
       
-      // Exclude current user and filter based on query
-      if (user.email !== currentUserEmail && 
-          (user.email.toLowerCase().includes(searchQuery.toLowerCase()) || 
-           (user.name && user.name.toLowerCase().includes(searchQuery.toLowerCase())))) {
-        users.push(user);
+      // Skip current user
+      if (userEmail === currentUserEmail) return;
+      
+      // Check if firstName matches search query (case insensitive)
+      const firstName = surveyData.firstName || '';
+      if (firstName.toLowerCase().includes(searchQuery.toLowerCase())) {
+        users.push({
+          email: userEmail,
+          name: firstName,
+          surveyData: surveyData
+        });
       }
     });
     
-    // Sort results by relevance and limit to 10
-    return users.slice(0, 10);
+    return users;
   } catch (error) {
     console.error('Error searching users:', error);
     throw error;
   }
 };
 
-// Utility function to ensure we have full user data with images 
+// Helper Methods
 export const enrichParticipantsWithUserData = async (participants: (string | any)[]) => {
-  if (!participants || !Array.isArray(participants)) return [];
+  const enrichedParticipants = [];
   
-  const enrichedParticipants = await Promise.all(
-    participants.map(async (participant) => {
-      // If participant is just an email string, get full user data
-      if (typeof participant === 'string') {
-        try {
-          const userRef = doc(usersCollection, participant);
-          const userDoc = await getDoc(userRef);
-          
-          if (userDoc.exists()) {
-            const userData = userDoc.data();
-            return {
-              _id: participant,
-              email: participant,
-              name: userData.name || '',
-              image: userData.image || ''
-            };
-          }
-        } catch (error) {
-          // Silently fail and use default values
-        }
-        
-        // Fallback if user data can't be fetched
-        return { _id: participant, email: participant, name: '', image: '' };
+  for (const participant of participants) {
+    if (typeof participant === 'string') {
+      // It's just an email, fetch user data
+      const userData = await getUser(participant);
+      if (userData) {
+        enrichedParticipants.push(userData);
+      } else {
+        // Fallback if user not found
+        enrichedParticipants.push({
+          _id: participant,
+          email: participant,
+          name: 'Unknown User'
+        });
       }
-      
-      // If participant is an object, ensure it has all fields
-      return {
-        _id: participant._id || participant.email,
-        email: participant.email || participant._id,
-        name: participant.name || '',
-        image: participant.image || ''
-      };
-    })
-  );
+    } else {
+      // It's already an object, use as is
+      enrichedParticipants.push(participant);
+    }
+  }
   
   return enrichedParticipants;
 }; 

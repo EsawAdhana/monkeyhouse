@@ -6,24 +6,6 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import Image from 'next/image';
 import { useMessageNotifications } from '@/contexts/MessageNotificationContext';
-import { useFirebaseRealtime } from '@/hooks/useFirebaseRealtime';
-import { 
-  conversationsCollection, 
-  query, 
-  where, 
-  orderBy,
-  Timestamp,
-  doc,
-  getDoc,
-  db,
-  usersCollection
-} from '@/lib/firebase';
-import { 
-  FirebaseConversation,
-  getConversationsByUser,
-  deleteConversation as deleteFirebaseConversation,
-  enrichParticipantsWithUserData
-} from '@/lib/firebaseService';
 import { FiUsers } from 'react-icons/fi';
 
 interface Participant {
@@ -135,231 +117,90 @@ export default function MessagesPage() {
     return processedConversations;
   }, []);
 
-  // Update fetchConversations to handle preloading
+  // Update fetchConversations to use API route
   const fetchConversations = useCallback(async () => {
     if (!session?.user?.email) return;
 
     try {
-      // Get conversations using Firebase service
-      const result = await getConversationsByUser(session.user.email);
+      // Use API route instead of direct Firebase service
+      const response = await fetch('/api/conversations');
+      if (!response.ok) {
+        throw new Error('Failed to fetch conversations');
+      }
       
-      // First set basic conversation data to show something quickly
-      const basicConversations = result.map(conv => {
-        return {
-          _id: conv._id as string,
-          participants: Array.isArray(conv.participants) 
-            ? conv.participants.map((p: any) => ({
-                _id: typeof p === 'string' ? p : p._id || p.email,
-                name: typeof p === 'string' ? '' : p.name || '',
-                image: typeof p === 'string' ? '' : p.image || ''
-              }))
-            : [],
-          otherParticipants: Array.isArray(conv.participants) 
-            ? conv.participants
-                .filter((p: any) => {
-                  const pId = typeof p === 'string' ? p : p._id || p.email;
-                  return pId !== session.user?.email;
-                })
-                .map((p: any) => ({
-                  _id: typeof p === 'string' ? p : p._id || p.email,
-                  name: typeof p === 'string' ? '' : p.name || '',
-                  image: typeof p === 'string' ? '' : p.image || ''
-                }))
-            : [],
-          lastMessage: conv.lastMessage 
-            ? {
-                content: typeof conv.lastMessage === 'string' 
-                  ? '' 
-                  : conv.lastMessage.content || '',
-                createdAt: typeof conv.lastMessage === 'string'
-                  ? new Date().toISOString()
-                  : conv.lastMessage.createdAt instanceof Timestamp
-                    ? conv.lastMessage.createdAt.toDate().toISOString()
-                    : new Date().toISOString()
-              }
-            : undefined,
-          isGroup: conv.isGroup || false,
-          name: conv.name || '',
-          updatedAt: conv.updatedAt instanceof Timestamp 
-            ? conv.updatedAt.toDate().toISOString() 
-            : conv.updatedAt instanceof Date
-              ? conv.updatedAt.toISOString()
-              : new Date().toISOString()
-        };
-      });
+      const result = await response.json();
+      if (!result.success) {
+        throw new Error(result.error || 'Failed to fetch conversations');
+      }
       
-      // Set basic conversations first to show something on screen
-      setConversations(basicConversations);
+      const conversationsData = result.data;
       
-      // Then enrich with detailed participant data
-      const enrichedConversations = await Promise.all(
-        result.map(async (conv) => {
-          // Enrich participants with full user data including images
-          const participantsWithDetail = await enrichParticipantsWithUserData(
-            Array.isArray(conv.participants) ? conv.participants : []
-          );
-          
-          // Filter to get other participants with complete data
-          const otherParticipants = participantsWithDetail
-            .filter((p: any) => p._id !== session.user?.email && p.email !== session.user?.email)
-            .map((p: any) => ({
-              _id: p._id,
-              name: p.name || '',
-              image: p.image || ''
-            }));
-          
-          return {
-            _id: conv._id as string,
-            participants: participantsWithDetail.map(p => ({
-              _id: p._id,
-              name: p.name || '',
-              image: p.image || ''
-            })),
-            otherParticipants,
-            lastMessage: conv.lastMessage 
-              ? {
-                  content: typeof conv.lastMessage === 'string' 
-                    ? '' 
-                    : conv.lastMessage.content || '',
-                  createdAt: typeof conv.lastMessage === 'string'
-                    ? new Date().toISOString()
-                    : conv.lastMessage.createdAt instanceof Timestamp
-                      ? conv.lastMessage.createdAt.toDate().toISOString()
-                      : new Date().toISOString()
-                }
-              : undefined,
-            isGroup: conv.isGroup || false,
-            name: conv.name || '',
-            updatedAt: conv.updatedAt instanceof Timestamp 
-              ? conv.updatedAt.toDate().toISOString() 
-              : conv.updatedAt instanceof Date
-                ? conv.updatedAt.toISOString()
-                : new Date().toISOString()
-          };
-        })
-      );
+      // Transform the API response to match our expected format
+      const transformedConversations = conversationsData.map((conv: any) => ({
+        _id: conv._id,
+        participants: Array.isArray(conv.participants) 
+          ? conv.participants.map((p: any) => ({
+              _id: typeof p === 'string' ? p : p._id || p.email,
+              name: typeof p === 'string' ? '' : p.name || '',
+              image: typeof p === 'string' ? '' : p.image || ''
+            }))
+          : [],
+        otherParticipants: Array.isArray(conv.otherParticipants) 
+          ? conv.otherParticipants.map((p: any) => ({
+              _id: typeof p === 'string' ? p : p._id || p.email,
+              name: typeof p === 'string' ? '' : p.name || '',
+              image: typeof p === 'string' ? '' : p.image || ''
+            }))
+          : [],
+        lastMessage: conv.lastMessage 
+          ? {
+              content: conv.lastMessage.content || '',
+              createdAt: conv.lastMessage.createdAt || new Date().toISOString()
+            }
+          : undefined,
+        isGroup: conv.isGroup || false,
+        name: conv.name || '',
+        updatedAt: conv.updatedAt || new Date().toISOString()
+      }));
       
-      // Update with fully enriched data
-      setConversations(enrichedConversations);
+      setConversations(transformedConversations);
       setConversationsLoaded(true);
     } catch (error) {
       console.error('Error fetching conversations:', error);
+      setConversationsLoaded(true);
     }
   }, [session?.user?.email]);
 
-  // Set up real-time listener for conversations
-  // Memoize the query to prevent it from being recreated on every render
-  const conversationsQuery = useCallback(() => {
-    if (!session?.user?.email) return null;
-    
-    return query(
-      conversationsCollection,
-      where('participants', 'array-contains', session.user.email as string),
-      orderBy('updatedAt', 'desc')
-    );
-  }, [session?.user?.email]);
-
-  // Store the query result to avoid recreation on every render
-  const queryRef = useRef(conversationsQuery());
-
-  // Update the query ref when the session changes
-  useEffect(() => {
-    queryRef.current = conversationsQuery();
-  }, [conversationsQuery]);
-
-  const previousConversationsRef = useRef<Conversation[]>([]);
-  const isFirstRenderRef = useRef(true);
-  
-  // Batched updates ref to prevent multiple state updates
-  const batchedUpdateTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-
-  // When Firebase sends new data, use this batched update pattern
-  const batchedSetConversations = useCallback((newConversations: Conversation[]) => {
-    // Clear any existing timeout
-    if (batchedUpdateTimeoutRef.current) {
-      clearTimeout(batchedUpdateTimeoutRef.current);
-    }
-    
-    // Set a new timeout to batch updates
-    batchedUpdateTimeoutRef.current = setTimeout(() => {
-      // Compare new data with previous data
-      const prevConversations = previousConversationsRef.current;
-      
-      // Only update if there are actual changes
-      if (isFirstRenderRef.current || newConversations.length !== prevConversations.length || 
-          newConversations.some((conv, index) => {
-            return index >= prevConversations.length || 
-                   !areConversationsEqual(conv, prevConversations[index]);
-          })) {
-        setConversations(newConversations);
-        previousConversationsRef.current = newConversations;
-        isFirstRenderRef.current = false;
-      }
-      
-      batchedUpdateTimeoutRef.current = null;
-    }, 50); // Small timeout to batch rapid updates
-  }, []);
-
-  // Use the transform function in Firebase real-time updates too
-  const { data: realtimeConversations } = useFirebaseRealtime<FirebaseConversation[]>({
-    subscriptionType: 'query',
-    target: queryRef.current!,
-    enabled: !!session?.user?.email && !!queryRef.current,
-    onData: async (data) => {
-      if (!data || data.length === 0 || !session?.user?.email) return;
-      
-      try {
-        // Transform Firebase data using our helper function
-        const conversationData = await transformConversationData(data, session.user.email);
-        batchedSetConversations(conversationData);
-      } catch (error) {
-        console.error('Error processing real-time data:', error);
-      }
-    }
-  });
-
-  // Refresh unread counts separately when realtimeConversations changes
-  useEffect(() => {
-    if (realtimeConversations) {
-      // Add a slight delay to prevent refresh loops
-      const timer = setTimeout(() => {
-        refreshUnreadCount();
-      }, 500);
-      
-      return () => clearTimeout(timer);
-    }
-  }, [realtimeConversations, refreshUnreadCount]);
-
-  // Initial fetch
+  // Poll for conversations every 5 seconds instead of realtime
   useEffect(() => {
     if (!session?.user?.email) return;
     
-    // Initial data fetch before Firebase real-time updates take over
+    // Initial fetch
     fetchConversations();
-  }, [session, fetchConversations]);
+    
+    // Set up polling
+    const interval = setInterval(fetchConversations, 5000);
+    
+    return () => clearInterval(interval);
+  }, [session?.user?.email, fetchConversations]);
 
   // Helper function to get user display name from survey firstName or other sources
   const getName = async (userId: string): Promise<string> => {
     try {
-      // First check if user has a survey with firstName
-      const surveyRef = doc(db, 'surveys', userId);
-      const surveyDoc = await getDoc(surveyRef);
+      // Use API call instead of direct Firebase access
+      const response = await fetch(`/api/user?email=${encodeURIComponent(userId)}`);
       
-      if (surveyDoc.exists()) {
-        const surveyData = surveyDoc.data();
-        if (surveyData.firstName && typeof surveyData.firstName === 'string' && surveyData.firstName.trim() !== '') {
-          return surveyData.firstName;
+      if (response.ok) {
+        const result = await response.json();
+        
+        // Check if user has survey data with firstName
+        if (result.surveyData?.firstName && typeof result.surveyData.firstName === 'string' && result.surveyData.firstName.trim() !== '') {
+          return result.surveyData.firstName;
         }
-      }
-      
-      // Then check user document
-      const userRef = doc(db, 'users', userId);
-      const userDoc = await getDoc(userRef);
-      
-      if (userDoc.exists()) {
-        const userData = userDoc.data();
-        if (userData.name && userData.name !== 'User' && userData.name.trim() !== '') {
-          return userData.name;
+        
+        // Check user profile name
+        if (result.userProfile?.name && result.userProfile.name !== 'User' && result.userProfile.name.trim() !== '') {
+          return result.userProfile.name;
         }
       }
       

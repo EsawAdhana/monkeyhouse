@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react';
 import { FiX, FiUsers, FiTrash2, FiLogOut } from 'react-icons/fi';
 import Image from 'next/image';
-import { getUser } from '@/lib/firebaseService';
 
 interface Participant {
   _id: string;
@@ -49,15 +48,18 @@ export default function ChatInfoModal({
           }
 
           try {
-            // Try to get user data from Firebase
-            const userData = await getUser(participant._id);
-            if (userData) {
-              return {
-                ...participant,
-                name: userData.name || 'User',
-                image: userData.image || '',
-                email: userData.email
-              };
+            // Use API route instead of direct Firebase service call
+            const response = await fetch(`/api/user?email=${encodeURIComponent(participant._id)}`);
+            if (response.ok) {
+              const result = await response.json();
+              if (result.userProfile) {
+                return {
+                  ...participant,
+                  name: result.userProfile.name || 'User',
+                  image: result.userProfile.image || '',
+                  email: result.userProfile.email
+                };
+              }
             }
           } catch (error) {
             console.error('Error fetching user data:', error);

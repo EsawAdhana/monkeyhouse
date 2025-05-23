@@ -1,21 +1,7 @@
 import { getServerSession } from 'next-auth';
 import { NextResponse } from 'next/server';
 import { NextRequest } from 'next/server';
-import { 
-  db, 
-  collection, 
-  query, 
-  where, 
-  getDocs, 
-  doc, 
-  getDoc, 
-  deleteDoc,
-  updateDoc,
-  usersCollection,
-  surveysCollection,
-  conversationsCollection,
-  messagesCollection
-} from '@/lib/firebase';
+import { adminDb } from '@/lib/firebase-admin';
 
 export async function GET(req: NextRequest) {
   try {
@@ -40,9 +26,9 @@ export async function GET(req: NextRequest) {
     }
 
     // Find the user's survey data
-    const surveyDoc = await getDoc(doc(surveysCollection, email));
+    const surveyDoc = await adminDb.collection('surveys').doc(email).get();
 
-    if (!surveyDoc.exists()) {
+    if (!surveyDoc.exists) {
       return NextResponse.json(
         { error: 'No survey data found for this user' },
         { status: 404 }
@@ -50,9 +36,9 @@ export async function GET(req: NextRequest) {
     }
 
     // Get basic user profile from users collection
-    const userDoc = await getDoc(doc(usersCollection, email));
+    const userDoc = await adminDb.collection('users').doc(email).get();
     
-    if (!userDoc.exists()) {
+    if (!userDoc.exists) {
       return NextResponse.json(
         { error: 'User not found' },
         { status: 404 }
@@ -61,9 +47,9 @@ export async function GET(req: NextRequest) {
     
     const userData = userDoc.data();
     const userProfile = {
-      email: userData.email,
-      name: userData.name || '',
-      image: userData.image || ''
+      email: userData?.email,
+      name: userData?.name || '',
+      image: userData?.image || ''
     };
 
     return NextResponse.json({
@@ -96,7 +82,7 @@ export async function DELETE() {
     const userEmail = session.user.email;
     
     // First, check if the user exists
-    const userDoc = await getDoc(doc(usersCollection, userEmail));
+    const userDoc = await adminDb.collection('users').doc(userEmail).get();
     
     // Track deletion statistics
     let surveyDeleted = false;
@@ -105,21 +91,18 @@ export async function DELETE() {
     let messagesUpdated = 0;
     
     // 1. Delete the user's survey data
-    const surveyDoc = await getDoc(doc(surveysCollection, userEmail));
-    if (surveyDoc.exists()) {
-      await deleteDoc(doc(surveysCollection, userEmail));
+    const surveyDoc = await adminDb.collection('surveys').doc(userEmail).get();
+    if (surveyDoc.exists) {
+      await adminDb.collection('surveys').doc(userEmail).delete();
       surveyDeleted = true;
     }
 
     // 2. Update conversations instead of deleting them
-    if (userDoc.exists()) {
+    if (userDoc.exists) {
       // Find conversations the user is part of
-      const conversationsQuery = query(
-        conversationsCollection,
-        where('participants', 'array-contains', userEmail)
-      );
+      const conversationsQuery = adminDb.collection('conversations').where('participants', 'array-contains', userEmail);
       
-      const conversationsSnapshot = await getDocs(conversationsQuery);
+      const conversationsSnapshot = await conversationsQuery.get();
       
       if (!conversationsSnapshot.empty) {
         for (const conversationDoc of conversationsSnapshot.docs) {
@@ -150,19 +133,16 @@ export async function DELETE() {
             });
             
             // Update the conversation with the modified participants
-            await updateDoc(doc(conversationsCollection, conversationId), {
+            await adminDb.collection('conversations').doc(conversationId).update({
               participants: updatedParticipants
             });
             
             conversationsUpdated++;
             
             // Now update all messages from this user in this conversation
-            const messagesQuery = query(
-              messagesCollection,
-              where('conversationId', '==', conversationId)
-            );
+            const messagesQuery = adminDb.collection('messages').where('conversationId', '==', conversationId);
             
-            const messagesSnapshot = await getDocs(messagesQuery);
+            const messagesSnapshot = await messagesQuery.get();
             
             for (const messageDoc of messagesSnapshot.docs) {
               const message = messageDoc.data();
@@ -226,7 +206,7 @@ export async function DELETE() {
                   updateData.readBy = updatedReadBy;
                 }
                 
-                await updateDoc(doc(messagesCollection, messageDoc.id), updateData);
+                await adminDb.collection('messages').doc(messageDoc.id).update(updateData);
                 messagesUpdated++;
               }
             }
@@ -235,7 +215,7 @@ export async function DELETE() {
       }
       
       // 3. Finally delete the user from the users collection
-      await deleteDoc(doc(usersCollection, userEmail));
+      await adminDb.collection('users').doc(userEmail).delete();
       userDeleted = true;
     }
 

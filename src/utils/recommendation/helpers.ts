@@ -1,18 +1,5 @@
 import { SurveyFormData } from '@/constants/survey-constants';
-import {
-  db,
-  surveysCollection,
-  collection,
-  query,
-  where,
-  getDocs,
-  doc,
-  getDoc
-} from '@/lib/firebase';
-
-// Reference to test_surveys collection
-export const testSurveysCollection = collection(db, 'test_surveys');
-export const blocksCollection = collection(db, 'blocks');
+import { adminDb } from '@/lib/firebase-admin';
 
 /**
  * Convert Firestore document to SurveyFormData
@@ -47,15 +34,12 @@ export function documentToSurveyData(doc: any): SurveyFormData {
  */
 export async function isUserBlocked(userEmail: string, currentUserEmail?: string): Promise<boolean> {
   // Check for system-wide blocks first
-  const systemBlockQuery = query(
-    blocksCollection,
-    where('blockedUserEmail', '==', userEmail),
-    where('blockedByEmail', '==', 'system'),
-    where('active', '==', true),
-    where('isSystemBlock', '==', true)
-  );
-  
-  const systemBlockSnapshot = await getDocs(systemBlockQuery);
+  const systemBlockSnapshot = await adminDb.collection('blocks')
+    .where('blockedUserEmail', '==', userEmail)
+    .where('blockedByEmail', '==', 'system')
+    .where('active', '==', true)
+    .where('isSystemBlock', '==', true)
+    .get();
   
   if (!systemBlockSnapshot.empty) {
     return true;
@@ -63,14 +47,11 @@ export async function isUserBlocked(userEmail: string, currentUserEmail?: string
   
   // If checking for a specific user interaction, check individual blocks
   if (currentUserEmail) {
-    const individualBlockQuery = query(
-      blocksCollection,
-      where('blockedUserEmail', '==', userEmail),
-      where('blockedByEmail', '==', currentUserEmail),
-      where('active', '==', true)
-    );
-    
-    const individualBlockSnapshot = await getDocs(individualBlockQuery);
+    const individualBlockSnapshot = await adminDb.collection('blocks')
+      .where('blockedUserEmail', '==', userEmail)
+      .where('blockedByEmail', '==', currentUserEmail)
+      .where('active', '==', true)
+      .get();
     
     if (!individualBlockSnapshot.empty) {
       return true;
@@ -88,9 +69,9 @@ export async function getUserSurveyData(userEmail: string): Promise<{
   isTestUser: boolean;
 }> {
   // Try regular surveys first
-  const userSurveyDoc = await getDoc(doc(surveysCollection, userEmail));
+  const userSurveyDoc = await adminDb.collection('surveys').doc(userEmail).get();
   
-  if (userSurveyDoc.exists()) {
+  if (userSurveyDoc.exists) {
     return {
       userData: documentToSurveyData(userSurveyDoc),
       isTestUser: false
@@ -98,9 +79,9 @@ export async function getUserSurveyData(userEmail: string): Promise<{
   }
   
   // Try test surveys next
-  const testUserSurveyDoc = await getDoc(doc(testSurveysCollection, userEmail));
+  const testUserSurveyDoc = await adminDb.collection('test_surveys').doc(userEmail).get();
   
-  if (testUserSurveyDoc.exists()) {
+  if (testUserSurveyDoc.exists) {
     return {
       userData: documentToSurveyData(testUserSurveyDoc),
       isTestUser: true

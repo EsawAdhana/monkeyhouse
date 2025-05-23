@@ -3,8 +3,6 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import { useSession } from 'next-auth/react';
 import { usePathname } from 'next/navigation';
-import { query, where, messagesCollection, onSnapshot, Timestamp } from '@/lib/firebase';
-import { getUnreadMessages } from '@/lib/firebaseService';
 
 interface UnreadConversation {
   conversationId: string;
@@ -28,7 +26,6 @@ export function MessageNotificationProvider({ children }: { children: React.Reac
   const { data: session } = useSession();
   const pathname = usePathname();
   const isFetchingRef = useRef(false);
-  const unsubscribeRef = useRef<() => void | null>(null);
   
   const fetchUnreadCount = useCallback(async () => {
     if (!session?.user?.email || isFetchingRef.current) return;
@@ -36,47 +33,34 @@ export function MessageNotificationProvider({ children }: { children: React.Reac
     try {
       isFetchingRef.current = true;
       
-      // Use Firebase service to get unread messages
-      const unreadData = await getUnreadMessages(session.user.email);
+      // Use API route instead of direct Firebase service call
+      const response = await fetch('/api/messages/unread');
+      if (!response.ok) {
+        throw new Error('Failed to fetch unread messages');
+      }
       
-      setUnreadCount(unreadData.total);
-      setUnreadByConversation(unreadData.byConversation);
+      const result = await response.json();
+      if (!result.success) {
+        throw new Error(result.error || 'Failed to fetch unread messages');
+      }
+      
+      const unreadData = result.data;
+      
+      setUnreadCount(unreadData.totalUnread);
+      
+      // Convert the byConversation object to array format
+      const conversationArray = Object.entries(unreadData.byConversation).map(([conversationId, unreadCount]) => ({
+        conversationId,
+        unreadCount: unreadCount as number
+      }));
+      
+      setUnreadByConversation(conversationArray);
     } catch (error) {
       console.error('Error fetching unread messages count:', error);
     } finally {
       isFetchingRef.current = false;
     }
   }, [session?.user?.email]);
-  
-  const setupRealtimeUnreadMessages = useCallback(() => {
-    if (!session?.user?.email) return;
-    
-    // Clean up any existing subscription
-    if (unsubscribeRef.current) {
-      unsubscribeRef.current();
-      unsubscribeRef.current = null;
-    }
-    
-    try {
-      // Set up a real-time listener for messages
-      const q = query(
-        messagesCollection,
-        where('senderId', '!=', session.user.email)
-      );
-      
-      const unsubscribe = onSnapshot(q, async () => {
-        // When we get updates, fetch the current unread state
-        await fetchUnreadCount();
-      }, (error) => {
-        console.error('Error in real-time unread messages listener:', error);
-      });
-      
-      unsubscribeRef.current = unsubscribe;
-      return unsubscribe;
-    } catch (error) {
-      console.error('Error setting up real-time unread messages:', error);
-    }
-  }, [session?.user?.email, fetchUnreadCount]);
   
   const refreshUnreadCount = async () => {
     await fetchUnreadCount();
@@ -120,20 +104,13 @@ export function MessageNotificationProvider({ children }: { children: React.Reac
     // Initial fetch
     fetchUnreadCount();
     
-    // Set up real-time listener
-    const unsubscribe = setupRealtimeUnreadMessages();
+    // Set up polling every 5 seconds
+    const interval = setInterval(fetchUnreadCount, 5000);
     
     return () => {
-      // Clean up on unmount
-      if (unsubscribeRef.current) {
-        unsubscribeRef.current();
-        unsubscribeRef.current = null;
-      }
-      if (unsubscribe) {
-        unsubscribe();
-      }
+      clearInterval(interval);
     };
-  }, [session?.user?.email, fetchUnreadCount, setupRealtimeUnreadMessages]);
+  }, [session?.user?.email, fetchUnreadCount]);
   
   return (
     <MessageNotificationContext.Provider 

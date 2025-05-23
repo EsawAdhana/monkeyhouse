@@ -5,14 +5,7 @@ import { calculateEnhancedCompatibilityScore } from './enhanced-scoring';
 import { isUserBlocked, getUserSurveyData, documentToSurveyData, testSurveysCollection } from './helpers';
 import { getConstraintDetails } from './constraints';
 import { DEFAULT_MIN_COMPATIBILITY_THRESHOLD } from './constants';
-import {
-  surveysCollection,
-  query,
-  where,
-  getDocs,
-  doc,
-  getDoc
-} from '@/lib/firebase';
+import { adminDb } from '@/lib/firebase-admin';
 
 /**
  * Get recommended matches for a user with scores
@@ -45,23 +38,19 @@ export async function getRecommendedMatches(
   // If specific emails are provided, only get those
   if (filterEmails && filterEmails.length > 0) {
     // Regular surveys for specific emails
-    const regularSurveysQuery = query(
-      surveysCollection,
-      where('isSubmitted', '==', true),
-      where('userEmail', 'in', filterEmails)
-    );
-    const regularSurveysSnapshot = await getDocs(regularSurveysQuery);
+    const regularSurveysSnapshot = await adminDb.collection('surveys')
+      .where('isSubmitted', '==', true)
+      .where('userEmail', 'in', filterEmails)
+      .get();
     const regularSurveys = regularSurveysSnapshot.docs;
     
     // Test surveys for specific emails (if showTestUsers is true)
     let testSurveys: any[] = [];
     if (showTestUsers) {
-      const testSurveysQuery = query(
-        testSurveysCollection,
-        where('isSubmitted', '==', true),
-        where('userEmail', 'in', filterEmails)
-      );
-      const testSurveysSnapshot = await getDocs(testSurveysQuery);
+      const testSurveysSnapshot = await adminDb.collection('test-surveys')
+        .where('isSubmitted', '==', true)
+        .where('userEmail', 'in', filterEmails)
+        .get();
       testSurveys = testSurveysSnapshot.docs;
     }
     
@@ -69,11 +58,9 @@ export async function getRecommendedMatches(
   } else {
     // Get all surveys except current user
     // Note: Firestore doesn't support $ne directly, so we'll filter after fetching
-    const regularSurveysQuery = query(
-      surveysCollection,
-      where('isSubmitted', '==', true)
-    );
-    const regularSurveysSnapshot = await getDocs(regularSurveysQuery);
+    const regularSurveysSnapshot = await adminDb.collection('surveys')
+      .where('isSubmitted', '==', true)
+      .get();
     const regularSurveys = regularSurveysSnapshot.docs.filter(
       doc => doc.data().userEmail !== userEmail
     );
@@ -81,11 +68,9 @@ export async function getRecommendedMatches(
     // Test surveys (if showTestUsers is true)
     let testSurveys: any[] = [];
     if (showTestUsers) {
-      const testSurveysQuery = query(
-        testSurveysCollection,
-        where('isSubmitted', '==', true)
-      );
-      const testSurveysSnapshot = await getDocs(testSurveysQuery);
+      const testSurveysSnapshot = await adminDb.collection('test-surveys')
+        .where('isSubmitted', '==', true)
+        .get();
       testSurveys = testSurveysSnapshot.docs.filter(
         doc => doc.data().userEmail !== userEmail
       );
@@ -154,12 +139,10 @@ export async function getTopMatchesByRegion(
     let potentialMatchDocs = [];
     
     // Get regular surveys in the specified region
-    const regularSurveysQuery = query(
-      surveysCollection,
-      where('isSubmitted', '==', true),
-      where('housingRegion', '==', region)
-    );
-    const regularSurveysSnapshot = await getDocs(regularSurveysQuery);
+    const regularSurveysSnapshot = await adminDb.collection('surveys')
+      .where('isSubmitted', '==', true)
+      .where('housingRegion', '==', region)
+      .get();
     const regularSurveys = regularSurveysSnapshot.docs.filter(
       doc => doc.data().userEmail !== userEmail
     );
@@ -167,12 +150,10 @@ export async function getTopMatchesByRegion(
     // Get test surveys in the specified region if showTestUsers is true
     let testSurveys: any[] = [];
     if (showTestUsers) {
-      const testSurveysQuery = query(
-        testSurveysCollection,
-        where('isSubmitted', '==', true),
-        where('housingRegion', '==', region)
-      );
-      const testSurveysSnapshot = await getDocs(testSurveysQuery);
+      const testSurveysSnapshot = await adminDb.collection('test-surveys')
+        .where('isSubmitted', '==', true)
+        .where('housingRegion', '==', region)
+        .get();
       testSurveys = testSurveysSnapshot.docs.filter(
         doc => doc.data().userEmail !== userEmail
       );

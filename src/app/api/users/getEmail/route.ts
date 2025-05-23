@@ -1,38 +1,39 @@
-import { NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
-import { usersCollection, doc, getDoc } from '@/lib/firebase';
+import { NextRequest, NextResponse } from 'next/server';
+import { adminDb } from '@/lib/firebase-admin';
 
-export async function GET(req: Request) {
+export async function GET(req: NextRequest) {
   try {
-    const session = await getServerSession();
+    const url = new URL(req.url);
+    const userId = url.searchParams.get('userId');
     
-    if (!session?.user) {
-      return NextResponse.json({ error: 'Unauthorized', success: false }, { status: 401 });
-    }
-
-    const { searchParams } = new URL(req.url);
-    const userId = searchParams.get('userId');
-
     if (!userId) {
-      return NextResponse.json({ error: 'User ID is required', success: false }, { status: 400 });
+      return NextResponse.json(
+        { success: false, error: 'userId parameter is required' },
+        { status: 400 }
+      );
     }
 
-    // In Firebase, the document ID is typically the email or a custom ID
-    // Get the user document from Firestore
-    const userDoc = await getDoc(doc(usersCollection, userId));
-
-    if (!userDoc.exists()) {
-      return NextResponse.json({ error: 'User not found', success: false }, { status: 404 });
+    // Try to get user document by email (userId is typically email)
+    const userDoc = await adminDb.collection('users').doc(userId).get();
+    
+    if (userDoc.exists) {
+      const userData = userDoc.data();
+      return NextResponse.json({
+        success: true,
+        email: userData?.email || userId
+      });
     }
 
-    const userData = userDoc.data();
-
-    return NextResponse.json({ 
-      success: true, 
-      email: userData.email
+    // If not found, return the userId as email (fallback)
+    return NextResponse.json({
+      success: true,
+      email: userId
     });
   } catch (error) {
-    console.error('Error retrieving user email:', error);
-    return NextResponse.json({ error: 'Internal Server Error', success: false }, { status: 500 });
+    console.error('Error getting user email:', error);
+    return NextResponse.json(
+      { success: false, error: 'Failed to get user email' },
+      { status: 500 }
+    );
   }
 } 

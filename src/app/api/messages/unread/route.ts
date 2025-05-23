@@ -13,22 +13,12 @@ export async function GET(req: Request) {
     const userEmail = session.user.email;
     
     // Get unread messages for user
-    const unreadMessages = await getUnreadMessages(userEmail);
+    const unreadData = await getUnreadMessages(userEmail);
     
     // Format response with counts by conversation
-    const unreadCounts: Record<string, number> = {};
-    
-    unreadMessages.forEach(msg => {
-      const convId = msg.conversationId;
-      if (!unreadCounts[convId]) {
-        unreadCounts[convId] = 0;
-      }
-      unreadCounts[convId]++;
-    });
-    
     const result = {
-      totalUnread: unreadMessages.length,
-      byConversation: unreadCounts
+      totalUnread: unreadData.totalUnreadCount,
+      byConversation: unreadData.unreadByConversation
     };
 
     return NextResponse.json({ success: true, data: result });
