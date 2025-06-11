@@ -7,11 +7,14 @@ import { FiHome, FiSettings, FiMessageSquare, FiClipboard, FiLogOut } from 'reac
 import { signOut } from 'next-auth/react';
 import ThemeToggle from './ThemeToggle';
 import useSurveyStatus from '@/hooks/useSurveyStatus';
+import { useNotifications } from '@/contexts/NotificationContext';
+import { MessagesBadge } from '@/components/NotificationBadge';
 
 export default function Navigation() {
   const pathname = usePathname();
   const router = useRouter();
   const { isSubmitted, loading } = useSurveyStatus();
+  const { totalUnreadCount } = useNotifications();
   
   // Don't render navigation only on the landing page
   if (pathname === '/') {
@@ -71,10 +74,17 @@ export default function Navigation() {
           <Link 
             href="/messages" 
             onClick={(e) => handleNavigation(e, '/messages')}
-            className={`${navItemClasses} ${isActive('/messages') ? activeClasses : inactiveClasses}`}
+            className={`${navItemClasses} ${isActive('/messages') ? activeClasses : inactiveClasses} relative`}
             data-navlink="true"
           >
-            <FiMessageSquare size={18} />
+            <div className="relative">
+              <FiMessageSquare size={18} />
+              <MessagesBadge 
+                totalUnreadCount={totalUnreadCount} 
+                variant="dot"
+                className="absolute -top-1 -right-1"
+              />
+            </div>
             <span className="hidden sm:inline">Messages</span>
           </Link>
           

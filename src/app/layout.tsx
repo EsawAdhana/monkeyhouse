@@ -6,6 +6,7 @@ import Navigation from '@/components/Navigation';
 import Footer from '@/components/Footer';
 import { ThemeProvider } from '@/components/ThemeProvider';
 import { SurveyNavigationProvider } from '@/contexts/SurveyNavigationContext';
+import { NotificationProvider } from '@/contexts/NotificationContext';
 
 const inter = Inter({ subsets: ['latin'] });
 
@@ -28,9 +29,10 @@ export default async function RootLayout({
         <SessionProvider session={session}>
           <ThemeProvider>
             <SurveyNavigationProvider>
-              <div className="flex flex-col min-h-screen">
-                {session && <Navigation />}
-                <main className="flex-grow">
+              <NotificationProvider>
+                <div className="flex flex-col min-h-screen">
+                  {session && <Navigation />}
+                  <main className="flex-grow">
                   {/* Subtle background pattern for all pages */}
                   <div className="absolute inset-0 z-0 overflow-hidden pointer-events-none">
                     {isLandingPage ? (
@@ -48,8 +50,9 @@ export default async function RootLayout({
                   
                   <div className="relative z-10">{children}</div>
                 </main>
-                <Footer />
-              </div>
+                  <Footer />
+                </div>
+              </NotificationProvider>
             </SurveyNavigationProvider>
           </ThemeProvider>
         </SessionProvider>

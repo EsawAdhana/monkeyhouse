@@ -6,6 +6,8 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import Image from 'next/image';
 import { FiUsers } from 'react-icons/fi';
+import { useNotifications } from '@/contexts/NotificationContext';
+import { ConversationBadge } from '@/components/NotificationBadge';
 
 interface Participant {
   _id: string;
@@ -59,6 +61,9 @@ export default function MessagesPage() {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [conversationsLoaded, setConversationsLoaded] = useState(false);
   const searchTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Notification hooks
+  const { getUnreadCount } = useNotifications();
 
   // Function to transform Firebase data to conversation format
   const transformConversationData = useCallback(async (data: FirebaseConversation[], userEmail: string) => {
@@ -196,17 +201,14 @@ export default function MessagesPage() {
     }
   }, [session?.user?.email]);
 
-  // Poll for conversations every 5 seconds instead of realtime
+  // Fetch conversations once (no polling to save quota)
   useEffect(() => {
     if (!session?.user?.email) return;
     
-    // Initial fetch
+    // Only fetch once - no polling to save Firebase quota
     fetchConversations();
     
-    // Set up polling
-    const interval = setInterval(fetchConversations, 5000);
-    
-    return () => clearInterval(interval);
+    // TODO: Replace with Firebase real-time listeners
   }, [session?.user?.email, fetchConversations]);
 
   // Helper function to get user display name from survey firstName or other sources
@@ -292,8 +294,8 @@ export default function MessagesPage() {
     // Deleted user image
     const deletedUserImage = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="%23888888"%3E%3Cpath d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 3c1.66 0 3 1.34 3 3s-1.34 3-3 3-3-1.34-3-3 1.34-3 3-3zm0 14.2c-2.5 0-4.71-1.28-6-3.22.03-1.99 4-3.08 6-3.08 1.99 0 5.97 1.09 6 3.08-1.29 1.94-3.5 3.22-6 3.22z"/%3E%3C/svg%3E';
     
-    if (conversation.isGroup) {
-      // For group chats, use a group icon or the first participant's image
+    if (conversation.participants.length >= 3) {
+      // For real group chats (3+ people), use a group icon or the first participant's image
       if (conversation.otherParticipants.length > 0) {
         const firstParticipant = conversation.otherParticipants[0];
         if (isDeletedUser(firstParticipant)) {
@@ -302,17 +304,37 @@ export default function MessagesPage() {
         return firstParticipant.image || defaultProfileImage;
       }
       return defaultProfileImage;
-    } else if (conversation.otherParticipants.length > 0) {
-      // For DMs, use the other participant's profile picture if available
-      const otherParticipant = conversation.otherParticipants[0];
-      if (isDeletedUser(otherParticipant)) {
-        return deletedUserImage;
+    } else {
+      // For DMs (2 people total), try multiple ways to get the other participant's image
+      
+      // First try otherParticipants
+      if (conversation.otherParticipants.length > 0) {
+        const otherParticipant = conversation.otherParticipants[0];
+        
+        if (isDeletedUser(otherParticipant)) {
+          return deletedUserImage;
+        }
+        if (otherParticipant.image && otherParticipant.image.trim() !== '') {
+          return otherParticipant.image;
+        }
       }
-      if (otherParticipant.image) {
-        return otherParticipant.image;
+      
+      // Fallback: try to find the other participant from all participants
+      if (conversation.participants.length >= 2 && session?.user?.email) {
+        const otherParticipant = conversation.participants.find(p => 
+          p._id !== session.user.email && p._id !== session.user.id
+        );
+        
+        if (otherParticipant) {
+          if (isDeletedUser(otherParticipant)) {
+            return deletedUserImage;
+          }
+          if (otherParticipant.image && otherParticipant.image.trim() !== '') {
+            return otherParticipant.image;
+          }
+        }
       }
     }
-    
     // Fallback for any other case
     return defaultProfileImage;
   };
@@ -320,7 +342,7 @@ export default function MessagesPage() {
   // Memoize the getConversationImage function
   const memoizedGetConversationImage = useCallback((conversation: Conversation) => {
     return getConversationImage(conversation);
-  }, []);
+  }, [session?.user?.email]);
 
   const deleteConversation = async (e: React.MouseEvent, conversationId: string) => {
     e.preventDefault(); // Prevent navigation to conversation detail
@@ -373,7 +395,7 @@ export default function MessagesPage() {
           <div className="flex items-center space-x-4 flex-1">
             <div className="relative flex-shrink-0">
               <div className="relative w-14 h-14">
-                {conversation.isGroup ? (
+                {conversation.participants.length >= 3 ? (
                   <div className="w-14 h-14 bg-blue-100 dark:bg-blue-900/30 rounded-full flex items-center justify-center">
                     <FiUsers className="w-8 h-8 text-blue-600 dark:text-blue-400" />
                   </div>
@@ -386,6 +408,11 @@ export default function MessagesPage() {
                     className="rounded-full object-cover border-2 border-gray-100 dark:border-gray-700"
                   />
                 )}
+                {/* Notification Badge */}
+                <ConversationBadge 
+                  conversationId={conversationId} 
+                  unreadCount={getUnreadCount(conversationId)} 
+                />
               </div>
             </div>
             
@@ -409,12 +436,12 @@ export default function MessagesPage() {
                 </span>
               </div>
               <div className="flex items-center justify-between">
-                {conversation.isGroup && (
+                {conversation.participants.length >= 3 && (
                   <p className="text-sm text-gray-500 dark:text-gray-400 flex items-center">
                     <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
                     </svg>
-                    {conversation.otherParticipants.length + 1} participants
+                    {conversation.participants.length} participants
                   </p>
                 )}
                 {conversation.lastMessage && (

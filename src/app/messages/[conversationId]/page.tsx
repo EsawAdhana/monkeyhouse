@@ -12,6 +12,7 @@ import ChatInfoModal from '@/components/ChatInfoModal';
 import { formatDistance } from 'date-fns';
 import ReportModal from '@/components/ReportModal';
 import { use } from 'react';
+import { useNotifications } from '@/contexts/NotificationContext';
 
 // Temporary interfaces to replace Firebase types
 interface FirebaseMessage {
@@ -125,6 +126,16 @@ export default function ConversationPage({
   const [showReportModal, setShowReportModal] = useState(false);
   const [pendingMessages, setPendingMessages] = useState<Set<string>>(new Set());
   const [participantsFullyLoaded, setParticipantsFullyLoaded] = useState<boolean>(false);
+
+  // Notification hook
+  const { markConversationAsRead } = useNotifications();
+
+  // Mark conversation as read when user opens it
+  useEffect(() => {
+    if (conversationId && session?.user?.email) {
+      markConversationAsRead(conversationId);
+    }
+  }, [conversationId, session?.user?.email, markConversationAsRead]);
 
   // Scroll to bottom of messages
   const scrollToBottom = () => {
