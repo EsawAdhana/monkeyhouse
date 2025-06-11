@@ -5,7 +5,6 @@ import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import Image from 'next/image';
-import { useMessageNotifications } from '@/contexts/MessageNotificationContext';
 import { FiUsers } from 'react-icons/fi';
 
 interface Participant {
@@ -59,14 +58,7 @@ export default function MessagesPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [conversationsLoaded, setConversationsLoaded] = useState(false);
-  const { refreshUnreadCount, hasUnreadMessages, unreadByConversation } = useMessageNotifications();
   const searchTimerRef = useRef<NodeJS.Timeout | null>(null);
-
-  // Custom function to get unread count since the context one isn't working
-  const getUnreadCount = (conversationId: string) => {
-    const conversation = unreadByConversation.find(conv => conv.conversationId === conversationId);
-    return conversation?.unreadCount || 0;
-  };
 
   // Function to transform Firebase data to conversation format
   const transformConversationData = useCallback(async (data: FirebaseConversation[], userEmail: string) => {
@@ -155,12 +147,45 @@ export default function MessagesPage() {
         lastMessage: conv.lastMessage 
           ? {
               content: conv.lastMessage.content || '',
-              createdAt: conv.lastMessage.createdAt || new Date().toISOString()
+              createdAt: (() => {
+                const createdAt = conv.lastMessage.createdAt;
+                if (!createdAt) return new Date().toISOString();
+                // Handle Firebase Timestamp
+                if (createdAt && typeof createdAt === 'object' && createdAt.toDate) {
+                  return createdAt.toDate().toISOString();
+                }
+                // Handle already converted date strings
+                if (typeof createdAt === 'string') {
+                  return createdAt;
+                }
+                // Handle Date objects
+                if (createdAt instanceof Date) {
+                  return createdAt.toISOString();
+                }
+                // Fallback
+                return new Date().toISOString();
+              })()
             }
           : undefined,
         isGroup: conv.isGroup || false,
         name: conv.name || '',
-        updatedAt: conv.updatedAt || new Date().toISOString()
+        updatedAt: (() => {
+          if (!conv.updatedAt) return new Date().toISOString();
+          // Handle Firebase Timestamp
+          if (conv.updatedAt && typeof conv.updatedAt === 'object' && conv.updatedAt.toDate) {
+            return conv.updatedAt.toDate().toISOString();
+          }
+          // Handle already converted date strings
+          if (typeof conv.updatedAt === 'string') {
+            return conv.updatedAt;
+          }
+          // Handle Date objects
+          if (conv.updatedAt instanceof Date) {
+            return conv.updatedAt.toISOString();
+          }
+          // Fallback
+          return new Date().toISOString();
+        })()
       }));
       
       setConversations(transformedConversations);
@@ -327,10 +352,8 @@ export default function MessagesPage() {
   };
 
   // Modified component to handle displaying conversation names properly - wrapped in memo to prevent unnecessary re-renders
-  const ConversationItem = memo(({ conversation, hasUnreadMessages, getUnreadCount }: { 
+  const ConversationItem = memo(({ conversation }: { 
     conversation: Conversation;
-    hasUnreadMessages: (id: string) => boolean;
-    getUnreadCount: (id: string) => number;
   }) => {
     const conversationId = conversation._id;
     const displayName = useMemo(() => {
@@ -364,24 +387,25 @@ export default function MessagesPage() {
                   />
                 )}
               </div>
-              {hasUnreadMessages(conversationId) && (
-                <div className="absolute -bottom-1 -right-1 bg-red-500 text-white text-xs font-bold rounded-full w-6 h-6 flex items-center justify-center border-2 border-white dark:border-gray-800">
-                  {getUnreadCount(conversationId) > 99 ? '99+' : getUnreadCount(conversationId)}
-                </div>
-              )}
             </div>
             
             <div className="flex-1 min-w-0">
               <div className="flex items-center justify-between mb-1">
-                <h2 className={`font-semibold text-lg truncate ${hasUnreadMessages(conversationId) ? 'text-blue-700 dark:text-blue-300' : 'text-gray-900 dark:text-gray-100'}`}>
+                <h2 className="font-semibold text-lg truncate text-gray-900 dark:text-gray-100">
                   {displayName || (conversation.isGroup ? conversation.name : 'Loading...')}
                 </h2>
                 <span className="text-sm text-gray-500 dark:text-gray-400 whitespace-nowrap ml-2">
-                  {new Date(conversation.updatedAt).toLocaleDateString(undefined, {
-                    month: 'short',
-                    day: 'numeric',
-                    year: new Date(conversation.updatedAt).getFullYear() !== new Date().getFullYear() ? 'numeric' : undefined
-                  })}
+                  {(() => {
+                    const date = conversation.updatedAt ? new Date(conversation.updatedAt) : new Date();
+                    if (isNaN(date.getTime())) {
+                      return 'Recently';
+                    }
+                    return date.toLocaleDateString(undefined, {
+                      month: 'short',
+                      day: 'numeric',
+                      year: date.getFullYear() !== new Date().getFullYear() ? 'numeric' : undefined
+                    });
+                  })()}
                 </span>
               </div>
               <div className="flex items-center justify-between">
@@ -394,7 +418,7 @@ export default function MessagesPage() {
                   </p>
                 )}
                 {conversation.lastMessage && (
-                  <p className={`text-sm truncate flex-1 ml-2 ${hasUnreadMessages(conversationId) ? 'font-medium text-blue-600 dark:text-blue-400' : 'text-gray-600 dark:text-gray-400'}`}>
+                  <p className="text-sm truncate flex-1 ml-2 text-gray-600 dark:text-gray-400">
                     {conversation.lastMessage.content}
                   </p>
                 )}
@@ -415,23 +439,13 @@ export default function MessagesPage() {
   }, (prevProps, nextProps) => {
     // Only re-render if something important changed
     if (prevProps.conversation._id !== nextProps.conversation._id) return false;
-    if (prevProps.hasUnreadMessages(prevProps.conversation._id) !== nextProps.hasUnreadMessages(nextProps.conversation._id)) return false;
-    if (prevProps.getUnreadCount(prevProps.conversation._id) !== nextProps.getUnreadCount(nextProps.conversation._id)) return false;
     return true;
   });
   
   // For debugging purposes
   ConversationItem.displayName = 'ConversationItem';
 
-  // Memoize the hasUnreadMessages function to avoid recreating it
-  const stableHasUnreadMessages = useCallback((id: string) => {
-    return hasUnreadMessages(id);
-  }, [hasUnreadMessages]);
-  
-  // Memoize the getUnreadCount function to avoid recreating it
-  const stableGetUnreadCount = useCallback((id: string) => {
-    return getUnreadCount(id);
-  }, [getUnreadCount]);
+
   
   // Memoize the deleteConversation function to avoid recreating it
   const stableDeleteConversation = useCallback((e: React.MouseEvent, id: string) => {
@@ -490,8 +504,6 @@ export default function MessagesPage() {
                 <ConversationItem
                   key={conversation._id}
                   conversation={conversation}
-                  hasUnreadMessages={stableHasUnreadMessages}
-                  getUnreadCount={stableGetUnreadCount}
                 />
               ))
             )}

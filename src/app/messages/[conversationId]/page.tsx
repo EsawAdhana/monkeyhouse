@@ -9,7 +9,6 @@ import { FiFlag, FiX, FiUsers, FiMapPin, FiCalendar, FiList, FiStar, FiInfo, FiU
 import UserProfileModal from '@/components/UserProfileModal';
 import ReportUserModal from '@/components/ReportUserModal';
 import ChatInfoModal from '@/components/ChatInfoModal';
-import { useMessageNotifications } from '@/contexts/MessageNotificationContext';
 import { formatDistance } from 'date-fns';
 import ReportModal from '@/components/ReportModal';
 import { use } from 'react';
@@ -38,14 +37,7 @@ const getMessagesByConversation = async (id: string) => {
   return result.success ? result.data : [];
 };
 
-const markFirebaseMessageAsRead = async (messageId: string, userEmail?: string) => {
-  const response = await fetch('/api/messages/mark-read', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ messageId, userEmail })
-  });
-  return response.ok;
-};
+
 
 const createMessage = async (messageData: any) => {
   const response = await fetch('/api/messages', {
@@ -131,7 +123,6 @@ export default function ConversationPage({
   const [loadingUserProfile, setLoadingUserProfile] = useState(false);
   const [userProfile, setUserProfile] = useState<any | null>(null);
   const [showReportModal, setShowReportModal] = useState(false);
-  const { refreshUnreadCount, decrementUnreadCount } = useMessageNotifications();
   const [pendingMessages, setPendingMessages] = useState<Set<string>>(new Set());
   const [participantsFullyLoaded, setParticipantsFullyLoaded] = useState<boolean>(false);
 
@@ -154,8 +145,8 @@ export default function ConversationPage({
         const conversationData: Conversation = {
           _id: result._id as string,
           participants: Array.isArray(result.participants) 
-            ? result.participants.map((p: any) => ({
-                _id: typeof p === 'string' ? p : p._id || p.email,
+            ? result.participants.map((p: any, index: number) => ({
+                _id: typeof p === 'string' ? p : p._id || p.email || `participant-${index}`,
                 name: typeof p === 'string' ? '' : p.name || '',
                 image: typeof p === 'string' ? '' : p.image || ''
               }))
@@ -166,8 +157,8 @@ export default function ConversationPage({
                   const pId = typeof p === 'string' ? p : p._id || p.email;
                   return pId !== session?.user?.email;
                 })
-                .map((p: any) => ({
-                  _id: typeof p === 'string' ? p : p._id || p.email,
+                .map((p: any, index: number) => ({
+                  _id: typeof p === 'string' ? p : p._id || p.email || `other-participant-${index}`,
                   name: typeof p === 'string' ? '' : p.name || '',
                   image: typeof p === 'string' ? '' : p.image || ''
                 }))
@@ -187,13 +178,13 @@ export default function ConversationPage({
             if (!prev) return null;
             return {
               ...prev,
-              participants: enrichedParticipants.map((p: Participant) => ({
-                _id: p._id,
+              participants: enrichedParticipants.map((p: Participant, index: number) => ({
+                _id: p._id || `enriched-participant-${index}`,
                 name: p.name || '',
                 image: p.image || ''
               })),
-              otherParticipants: enrichedOtherParticipants.map((p: Participant) => ({
-                _id: p._id,
+              otherParticipants: enrichedOtherParticipants.map((p: Participant, index: number) => ({
+                _id: p._id || `enriched-other-participant-${index}`,
                 name: p.name || '',
                 image: p.image || ''
               }))
@@ -211,8 +202,8 @@ export default function ConversationPage({
 
   // Transform Firebase data to match expected format
   const transformMessages = (result: FirebaseMessage[]) => {
-    return result.map((msg: FirebaseMessage) => ({
-      _id: msg._id as string,
+    return result.map((msg: FirebaseMessage, index: number) => ({
+      _id: msg._id || `msg-${index}-${Date.now()}`, // Ensure unique ID
       content: msg.content,
       senderId: typeof msg.senderId === 'string' 
         ? { 
@@ -232,11 +223,23 @@ export default function ConversationPage({
             image: typeof reader === 'string' ? '' : reader.image || ''
           }))
         : [],
-      createdAt: msg.createdAt instanceof Date 
-        ? msg.createdAt.toISOString()
-        : typeof msg.createdAt === 'string'
-          ? msg.createdAt
-          : new Date().toISOString()
+      createdAt: (() => {
+        if (!msg.createdAt) return new Date().toISOString();
+        // Handle Firebase Timestamp
+        if (msg.createdAt && typeof msg.createdAt === 'object' && msg.createdAt.toDate) {
+          return msg.createdAt.toDate().toISOString();
+        }
+        // Handle Date objects
+        if (msg.createdAt instanceof Date) {
+          return msg.createdAt.toISOString();
+        }
+        // Handle strings
+        if (typeof msg.createdAt === 'string') {
+          return msg.createdAt;
+        }
+        // Fallback
+        return new Date().toISOString();
+      })()
     }));
   };
 
@@ -329,51 +332,7 @@ export default function ConversationPage({
     }
   };
 
-  // Handle marking messages as read in a separate effect
-  useEffect(() => {
-    if (!messages || !session?.user?.email) return;
-    
-    // Find unread messages that haven't been processed yet
-    const currentUserEmail = session.user.email;
-    const unreadMessages = messages.filter((msg: Message) => {
-      if (!msg._id) return false;
-      
-      const senderId = typeof msg.senderId === 'string' ? msg.senderId : msg.senderId._id;
-      const readBy = Array.isArray(msg.readBy) ? msg.readBy.map(r => typeof r === 'string' ? r : r._id) : [];
-      
-      // Check if this message is unread and hasn't been processed yet
-      return senderId !== currentUserEmail && 
-             !readBy.includes(currentUserEmail);
-    });
-    
-    // Mark unread messages as read (batched)
-    if (unreadMessages.length > 0) {
-      // Batch these operations
-      const markReadPromises = unreadMessages.map(async (msg: Message) => {
-        if (msg._id) {
-          await markMessageAsRead(msg._id);
-        }
-      });
-      
-      Promise.all(markReadPromises).then(() => {
-        // Scroll to bottom when new messages are marked as read
-        scrollToBottom();
-      });
-    }
-  }, [messages, session?.user?.email]);
 
-  // Mark a specific message as read
-  const markMessageAsRead = async (messageId: string) => {
-    if (!session?.user?.email) return;
-    
-    try {
-      await markFirebaseMessageAsRead(messageId, session.user.email);
-      // Update unread count in notification context
-      decrementUnreadCount(conversationId);
-    } catch (error) {
-      console.error('Error marking message as read:', error);
-    }
-  };
 
   // Helper function to get user name from session or first name from survey
   const getUserName = async () => {
@@ -1082,15 +1041,18 @@ export default function ConversationPage({
             </div>
           </div>
         ) : (
-          messages.map((message) => {
-            const isCurrentUser = message.senderId._id === session?.user?.id || 
-                                   message.senderId._id === session?.user?.email;
-            const isPending = pendingMessages.has(message._id);
-            
-            // Skip rendering pending messages that aren't from the current user
-            if (isPending && !isCurrentUser) {
-              return null;
-            }
+          messages
+            .filter((message) => {
+              const isCurrentUser = message.senderId._id === session?.user?.id || 
+                                     message.senderId._id === session?.user?.email;
+              const isPending = pendingMessages.has(message._id);
+              
+              // Only include messages that aren't pending or are from the current user
+              return !isPending || isCurrentUser;
+            })
+            .map((message) => {
+              const isCurrentUser = message.senderId._id === session?.user?.id || 
+                                     message.senderId._id === session?.user?.email;
             
             return (
               <div
