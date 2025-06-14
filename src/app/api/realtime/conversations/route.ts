@@ -2,6 +2,89 @@ import { NextRequest } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { adminDb } from '@/lib/firebase-admin';
 
+// Helper function to get user data from Firebase
+async function getUserData(userEmail: string) {
+  try {
+    // Get survey data first (priority for firstName)
+    const surveyDoc = await adminDb.collection('surveys').doc(userEmail).get();
+    let firstName = '';
+    
+    if (surveyDoc.exists) {
+      const surveyData = surveyDoc.data();
+      if (surveyData?.firstName && 
+          typeof surveyData.firstName === 'string' && 
+          surveyData.firstName.trim() !== '') {
+        firstName = surveyData.firstName.trim();
+      }
+    }
+    
+    // Get user profile data for image
+    const userDoc = await adminDb.collection('users').doc(userEmail).get();
+    let userImage = '';
+    
+    if (userDoc.exists) {
+      const userData = userDoc.data();
+      userImage = userData?.image || userData?.userProfile?.image || '';
+    }
+    
+    return {
+      _id: userEmail,
+      name: firstName || 'User',  // Only survey firstName or 'User'
+      image: userImage,
+      email: userEmail
+    };
+  } catch (error) {
+    console.error('Error fetching user data:', error);
+    return {
+      _id: userEmail,
+      name: 'User', 
+      image: '',
+      email: userEmail
+    };
+  }
+}
+
+// Helper function to populate participant data in conversations
+async function populateConversationParticipants(conversations: any[], currentUserEmail: string) {
+  const userCache = new Map();
+  
+  // First, collect all unique participant IDs
+  const participantIds = Array.from(new Set(
+    conversations.flatMap(conv => 
+      (conv.participants || []).map((p: any) => typeof p === 'string' ? p : p._id || p.email)
+    ).filter(Boolean)
+  ));
+  
+  // Fetch user data for all participants
+  for (const participantId of participantIds) {
+    if (!userCache.has(participantId)) {
+      const userData = await getUserData(participantId);
+      userCache.set(participantId, userData);
+    }
+  }
+  
+  // Populate conversations with user data
+  return conversations.map(conv => {
+    const participants = (conv.participants || []).map((p: any) => {
+      const participantId = typeof p === 'string' ? p : p._id || p.email;
+      return userCache.get(participantId) || {
+        _id: participantId,
+        name: 'User',
+        image: '',
+        email: participantId
+      };
+    });
+    
+    const otherParticipants = participants.filter((p: any) => p._id !== currentUserEmail);
+    
+    return {
+      ...conv,
+      participants,
+      otherParticipants
+    };
+  });
+}
+
 export async function GET(req: NextRequest) {
   try {
     const session = await getServerSession();
@@ -18,19 +101,24 @@ export async function GET(req: NextRequest) {
     const stream = new ReadableStream({
       start(controller) {
         // Set up Firebase Admin listener for conversations
+        // Sort by updatedAt (most recent first)
         const unsubscribe = adminDb
           .collection('conversations')
           .where('participants', 'array-contains', userEmail)
+          .orderBy('updatedAt', 'desc')
           .onSnapshot(
-            (snapshot) => {
+            async (snapshot) => {
               const conversations = snapshot.docs.map(doc => ({
                 _id: doc.id,
                 ...doc.data()
               }));
 
+              // Populate participant data with user information
+              const populatedConversations = await populateConversationParticipants(conversations, userEmail);
+
               const data = `data: ${JSON.stringify({ 
                 type: 'conversations', 
-                data: conversations 
+                data: populatedConversations 
               })}\n\n`;
               
               controller.enqueue(encoder.encode(data));

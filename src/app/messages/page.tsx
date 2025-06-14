@@ -129,6 +129,13 @@ export default function MessagesPage() {
         })()
       }));
       
+      // Sort conversations by updatedAt (most recent first)
+      transformedConversations.sort((a, b) => {
+        const aTime = new Date(a.updatedAt).getTime();
+        const bTime = new Date(b.updatedAt).getTime();
+        return bTime - aTime; // Most recent first
+      });
+      
       setConversations(transformedConversations);
       setConversationsLoaded(true);
     } else if (!conversationsLoading) {
@@ -220,6 +227,11 @@ export default function MessagesPage() {
     // Deleted user image
     const deletedUserImage = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="%23888888"%3E%3Cpath d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 3c1.66 0 3 1.34 3 3s-1.34 3-3 3-3-1.34-3-3 1.34-3 3-3zm0 14.2c-2.5 0-4.71-1.28-6-3.22.03-1.99 4-3.08 6-3.08 1.99 0 5.97 1.09 6 3.08-1.29 1.94-3.5 3.22-6 3.22z"/%3E%3C/svg%3E';
     
+    // Helper function to check if an image URL is valid
+    const isValidImageUrl = (url: string | undefined | null) => {
+      return url && typeof url === 'string' && url.trim() !== '' && url !== 'undefined' && url !== 'null';
+    };
+    
     if (conversation.participants.length >= 3) {
       // For real group chats (3+ people), use a group icon or the first participant's image
       if (conversation.otherParticipants.length > 0) {
@@ -227,7 +239,9 @@ export default function MessagesPage() {
         if (isDeletedUser(firstParticipant)) {
           return deletedUserImage;
         }
-        return firstParticipant.image || defaultProfileImage;
+        if (isValidImageUrl(firstParticipant.image)) {
+          return firstParticipant.image;
+        }
       }
       return defaultProfileImage;
     } else {
@@ -240,7 +254,7 @@ export default function MessagesPage() {
         if (isDeletedUser(otherParticipant)) {
           return deletedUserImage;
         }
-        if (otherParticipant.image && otherParticipant.image.trim() !== '') {
+        if (isValidImageUrl(otherParticipant.image)) {
           return otherParticipant.image;
         }
       }
@@ -255,7 +269,7 @@ export default function MessagesPage() {
           if (isDeletedUser(otherParticipant)) {
             return deletedUserImage;
           }
-          if (otherParticipant.image && otherParticipant.image.trim() !== '') {
+          if (isValidImageUrl(otherParticipant.image)) {
             return otherParticipant.image;
           }
         }
@@ -340,6 +354,11 @@ export default function MessagesPage() {
                     fill
                     sizes="(max-width: 768px) 56px, 56px"
                     className="rounded-full object-cover border-2 border-gray-100 dark:border-gray-700"
+                    onError={(e) => {
+                      // Fallback to default image if the profile image fails to load
+                      const defaultImage = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="%23cccccc"%3E%3Cpath d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 3c1.66 0 3 1.34 3 3s-1.34 3-3 3-3-1.34-3-3 1.34-3 3-3zm0 14.2c-2.5 0-4.71-1.28-6-3.22.03-1.99 4-3.08 6-3.08 1.99 0 5.97 1.09 6 3.08-1.29 1.94-3.5 3.22-6 3.22z"/%3E%3C/svg%3E';
+                      (e.target as HTMLImageElement).src = defaultImage;
+                    }}
                   />
                 )}
                 {/* Notification Badge */}
@@ -368,12 +387,22 @@ export default function MessagesPage() {
                   </p>
                 )}
                 {conversation.lastMessage && (
-                  <p className={`text-sm truncate flex-1 ml-2 ${
+                  <p className={`text-sm flex-1 ml-2 ${
                     hasUnreadMessages 
                       ? 'text-gray-900 dark:text-gray-100 font-semibold' 
                       : 'text-gray-600 dark:text-gray-400'
-                  }`}>
-                    {conversation.lastMessage.content}
+                  }`}
+                  style={{
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap',
+                    wordBreak: 'break-all',
+                    maxWidth: '100%'
+                  }}>
+                    {conversation.lastMessage.content.length > 50 
+                      ? `${conversation.lastMessage.content.substring(0, 50)}...`
+                      : conversation.lastMessage.content
+                    }
                   </p>
                 )}
               </div>
