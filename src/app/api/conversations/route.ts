@@ -3,6 +3,8 @@ import { getServerSession } from 'next-auth';
 import { 
   getConversationsByUser, 
   createConversation, 
+  findExistingConversation,
+  createOrFindDirectMessage,
   getUser,
   enrichParticipantsWithUserData 
 } from '@/lib/firebaseService';
@@ -89,6 +91,18 @@ export async function POST(req: Request) {
     
     // For direct messages, check if it's just 2 participants and not a group
     const isDirectMessage = !isGroup && allParticipants.length === 2;
+    
+    // Check if a conversation with the same participants already exists
+    const existingConversation = await findExistingConversation(allParticipants);
+    
+    if (existingConversation) {
+      // Return the existing conversation instead of creating a new one
+      return NextResponse.json({ 
+        success: true, 
+        data: existingConversation,
+        message: 'Conversation already exists'
+      });
+    }
     
     // Create new conversation with validated participants
     const conversation = await createConversation({

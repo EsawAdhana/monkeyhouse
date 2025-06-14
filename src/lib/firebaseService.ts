@@ -116,6 +116,62 @@ export const getUser = async (email: string) => {
 };
 
 // Conversation Methods
+export const findExistingConversation = async (participants: string[]): Promise<FirebaseConversation | null> => {
+  // Sort participants to ensure consistent comparison
+  const sortedParticipants = [...participants].sort();
+  
+  // Get all conversations that include at least one of the participants
+  const querySnapshot = await adminDb.collection('conversations')
+    .where('participants', 'array-contains', participants[0])
+    .get();
+  
+  // Check each conversation to see if it has exactly the same participants
+  for (const doc of querySnapshot.docs) {
+    const conversation = doc.data() as FirebaseConversation;
+    
+    // Extract participant emails/IDs from the conversation
+    const conversationParticipants = conversation.participants.map(p => 
+      typeof p === 'string' ? p : p.email || (p as any)._id
+    ).filter(Boolean).sort();
+    
+    // Check if participant arrays are identical
+    if (conversationParticipants.length === sortedParticipants.length &&
+        conversationParticipants.every((p, index) => p === sortedParticipants[index])) {
+      return {
+        _id: doc.id,
+        ...conversation
+      };
+    }
+  }
+  
+  return null;
+};
+
+export const createOrFindDirectMessage = async (currentUserEmail: string, otherUserEmail: string) => {
+  // First, check if a conversation already exists between these two users
+  const participants = [currentUserEmail, otherUserEmail].sort();
+  const existingConversation = await findExistingConversation(participants);
+  
+  if (existingConversation) {
+    return {
+      conversation: existingConversation,
+      isExisting: true
+    };
+  }
+  
+  // Create new direct message conversation
+  const newConversation = await createConversation({
+    participants,
+    isGroup: false,
+    name: null
+  });
+  
+  return {
+    conversation: newConversation,
+    isExisting: false
+  };
+};
+
 export const createConversation = async (conversation: Omit<FirebaseConversation, '_id' | 'createdAt' | 'updatedAt'>) => {
   const now = new Date();
   const conversationData = {

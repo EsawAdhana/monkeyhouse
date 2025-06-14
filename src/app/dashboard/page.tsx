@@ -263,12 +263,17 @@ export default function DashboardPage() {
 
   const handleCreateGroupChat = async () => {
     if (selectedUsers.length < 1) {
-      alert('Please select at least 1 user for a group chat');
+      alert('Please select at least 1 user for a conversation');
       return;
     }
 
-    if (!groupName.trim()) {
-      alert('Please enter a group name');
+    // Check if this is a direct message (only 1 other person) or a group chat (multiple people)
+    const isDirectMessage = selectedUsers.length === 1;
+    const isGroupChat = selectedUsers.length > 1;
+
+    // Only require group name for actual group chats (multiple people)
+    if (isGroupChat && !groupName.trim()) {
+      alert('Please enter a group name for the group chat');
       return;
     }
 
@@ -282,24 +287,32 @@ export default function DashboardPage() {
         },
         body: JSON.stringify({
           participants: [session?.user?.email, ...selectedUsers.map(u => u.userEmail)],
-          isGroup: true,
-          name: groupName.trim(),
+          isGroup: isGroupChat, // Only true for multiple people
+          name: isGroupChat ? groupName.trim() : null, // Only set name for group chats
         }),
       });
 
       if (!response.ok) {
-        throw new Error('Failed to create group chat');
+        throw new Error(`Failed to create ${isDirectMessage ? 'conversation' : 'group chat'}`);
       }
 
       const result = await response.json();
       if (result.success && result.data && result.data._id) {
-        router.push(`/messages/${result.data._id}`);
+        // Check if conversation already existed
+        if (result.message === 'Conversation already exists') {
+          // Show a friendly message and redirect to existing conversation
+          alert(`A conversation with ${isDirectMessage ? 'this person' : 'these participants'} already exists! Taking you to that conversation.`);
+          router.push(`/messages/${result.data._id}`);
+        } else {
+          // Redirect to newly created conversation
+          router.push(`/messages/${result.data._id}`);
+        }
       } else {
-        throw new Error('Failed to create group chat');
+        throw new Error(`Failed to create ${isDirectMessage ? 'conversation' : 'group chat'}`);
       }
     } catch (error) {
-      console.error('Error creating group chat:', error);
-      alert('Failed to create group chat. Please try again.');
+      console.error(`Error creating ${isDirectMessage ? 'conversation' : 'group chat'}:`, error);
+      alert(`Failed to create ${isDirectMessage ? 'conversation' : 'group chat'}. Please try again.`);
     } finally {
       setIsCreatingGroup(false);
       setSelectedUsers([]);
@@ -337,20 +350,23 @@ export default function DashboardPage() {
           </div>
           {selectedUsers.length > 0 && (
             <div className="flex items-center gap-4">
-              <input
-                type="text"
-                placeholder="Enter group name"
-                value={groupName}
-                onChange={(e) => setGroupName(e.target.value)}
-                className="px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
-              />
+              {/* Only show group name input for group chats (multiple people) */}
+              {selectedUsers.length > 1 && (
+                <input
+                  type="text"
+                  placeholder="Enter group name"
+                  value={groupName}
+                  onChange={(e) => setGroupName(e.target.value)}
+                  className="px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                />
+              )}
               <button
                 onClick={handleCreateGroupChat}
-                disabled={isCreatingGroup || selectedUsers.length < 1 || !groupName.trim()}
+                disabled={isCreatingGroup || selectedUsers.length < 1 || (selectedUsers.length > 1 && !groupName.trim())}
                 className="px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg disabled:opacity-50 flex items-center"
               >
                 <FiUsers className="mr-2" />
-                {isCreatingGroup ? 'Creating...' : 'Create Group Chat'}
+                {isCreatingGroup ? 'Creating...' : selectedUsers.length === 1 ? 'Start Conversation' : 'Create Group Chat'}
               </button>
               <button
                 onClick={() => {
