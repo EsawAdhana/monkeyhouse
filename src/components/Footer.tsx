@@ -9,9 +9,9 @@ export default function Footer() {
   const pathname = usePathname();
   const currentYear = new Date().getFullYear();
   const isLandingPage = pathname === '/';
-  const isChatPage = pathname?.startsWith('/messages/') && pathname?.split('/').length > 2;
+  const isChatPage = pathname?.startsWith('/messages/') || pathname === '/messages';
   
-  // Don't show footer on chat pages
+  // Don't show footer on any messages/chat pages
   if (isChatPage) {
     return null;
   }

@@ -51,9 +51,54 @@ const createMessage = async (messageData: any) => {
 };
 
 const enrichParticipantsWithUserData = async (participants: any[]) => {
-  // For now, return participants as-is
-  // This should be replaced with proper API calls to enrich user data
-  return participants;
+  if (!participants || participants.length === 0) return [];
+  
+  return Promise.all(participants.map(async (participant: any) => {
+    const participantId = typeof participant === 'string' ? participant : participant._id || participant.email;
+    
+    if (!participantId) {
+      return {
+        _id: '',
+        name: 'Unknown User',
+        image: ''
+      };
+    }
+    
+    try {
+      // Fetch user profile data
+      const response = await fetch(`/api/user?email=${encodeURIComponent(participantId)}`);
+      
+      if (response.ok) {
+        const result = await response.json();
+        
+        // Get name from survey firstName or userProfile name
+        let name = 'User';
+        if (result.surveyData?.firstName && typeof result.surveyData.firstName === 'string' && result.surveyData.firstName.trim()) {
+          name = result.surveyData.firstName.trim();
+        } else if (result.userProfile?.name && result.userProfile.name !== 'User' && result.userProfile.name.trim()) {
+          name = result.userProfile.name.trim();
+        }
+        
+        // Get image from userProfile
+        const image = result.userProfile?.image || '';
+        
+        return {
+          _id: participantId,
+          name,
+          image
+        };
+      }
+    } catch (error) {
+      console.error('Error enriching participant data:', error);
+    }
+    
+    // Fallback for failed requests
+    return {
+      _id: participantId,
+      name: 'User',
+      image: ''
+    };
+  }));
 };
 
 interface Participant {
@@ -772,11 +817,11 @@ export default function ConversationPage({
   // Add a conditional rendering based on loading state
   if (isLoading && !participantsFullyLoaded) {
     return (
-      <div className="flex flex-col h-screen bg-gray-50 dark:bg-gray-900">
+      <div className="flex flex-col bg-gray-50 dark:bg-gray-900" style={{ height: 'calc(100vh - 4rem)' }}>
         <div className="flex-1 flex items-center justify-center">
           <div className="animate-pulse text-center">
-            <div className="w-12 h-12 rounded-full bg-gray-300 dark:bg-gray-700 mx-auto mb-4"></div>
-            <div className="h-4 w-32 bg-gray-300 dark:bg-gray-700 rounded mx-auto"></div>
+            <div className="h-8 w-48 bg-gray-200 dark:bg-gray-700 rounded mb-4"></div>
+            <div className="h-4 w-32 bg-gray-200 dark:bg-gray-700 rounded"></div>
           </div>
         </div>
       </div>
@@ -785,48 +830,48 @@ export default function ConversationPage({
 
   if (!conversation) {
     return (
-      <div className="h-screen flex flex-col bg-gray-50 dark:bg-gray-900">
-        {/* Header */}
-        <div className="border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-3 flex justify-between items-center">
-          <div className="animate-pulse h-8 w-32 bg-gray-200 dark:bg-gray-700 rounded"></div>
-          <div className="animate-pulse h-8 w-8 bg-gray-200 dark:bg-gray-700 rounded-full"></div>
+      <div className="flex flex-col bg-gray-50 dark:bg-gray-900" style={{ height: 'calc(100vh - 4rem)' }}>
+        {/* Header - Always visible */}
+        <div className="flex-shrink-0 border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-3 flex justify-between items-center">
+          <>
+            <div className="animate-pulse h-8 w-32 bg-gray-200 dark:bg-gray-700 rounded"></div>
+            <div className="animate-pulse h-8 w-8 bg-gray-200 dark:bg-gray-700 rounded-full"></div>
+          </>
         </div>
-
-        {/* Messages */}
-        <div className="flex-1 overflow-y-auto p-4 bg-gray-50 dark:bg-gray-900 space-y-4">
-          <div className="space-y-4">
-            {[1, 2, 3, 4].map(i => (
-              <div key={i} className="animate-pulse flex flex-col">
-                <div className={`${i % 2 === 0 ? 'mr-auto' : 'ml-auto'} max-w-[70%]`}>
-                  <div className="h-10 bg-gray-200 dark:bg-gray-700 rounded-lg mb-1"></div>
-                  <div className="h-4 w-20 bg-gray-200 dark:bg-gray-700 rounded self-end mt-1"></div>
-                </div>
+        
+        {/* Messages Window - Contained scrollable area */}
+        <div className="flex-1 p-4 min-h-0">
+          <div className="h-full bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 shadow-sm overflow-hidden flex flex-col">
+            <div className="flex-1 overflow-y-auto p-4 bg-gray-50 dark:bg-gray-900">
+              <div className="space-y-4">
+                {[1, 2, 3, 4].map(i => (
+                  <div key={i} className="animate-pulse flex flex-col">
+                    <div className={`${i % 2 === 0 ? 'mr-auto' : 'ml-auto'} max-w-[70%]`}>
+                      <div className="h-10 bg-gray-200 dark:bg-gray-700 rounded-lg mb-1"></div>
+                      <div className="h-4 w-20 bg-gray-200 dark:bg-gray-700 rounded self-end mt-1"></div>
+                    </div>
+                  </div>
+                ))}
               </div>
-            ))}
+            </div>
           </div>
         </div>
 
-        {/* Message Input */}
-        <div className="p-4 border-t border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
-          <form onSubmit={sendMessage} className="flex space-x-2">
+        {/* Message Input - Always visible at bottom */}
+        <div className="flex-shrink-0 p-4 border-t border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
+          <form className="flex space-x-2">
             <input
               type="text"
-              value={newMessage}
-              onChange={(e) => setNewMessage(e.target.value)}
               placeholder="Type a message..."
               className="flex-1 bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 border border-gray-200 dark:border-gray-600"
-              disabled={isSending}
+              disabled
             />
             <button
               type="submit"
               className="bg-blue-500 text-white rounded-lg px-4 py-2 hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
-              disabled={!newMessage.trim() || isSending}
+              disabled
             >
-              {isSending ? (
-                <div className="animate-spin rounded-full h-5 w-5 border-t-2 border-b-2 border-white"></div>
-              ) : (
-                'Send'
-              )}
+              Send
             </button>
           </form>
         </div>
@@ -835,9 +880,9 @@ export default function ConversationPage({
   }
 
   return (
-    <div className="h-screen flex flex-col bg-gray-50 dark:bg-gray-900">
-      {/* Header */}
-      <div className="border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-3 flex justify-between items-center">
+    <div className="flex flex-col bg-gray-50 dark:bg-gray-900" style={{ height: 'calc(100vh - 4rem)' }}>
+      {/* Header - Always visible */}
+      <div className="flex-shrink-0 border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-3 flex justify-between items-center">
         {!conversation ? (
           <>
             <div className="animate-pulse h-8 w-32 bg-gray-200 dark:bg-gray-700 rounded"></div>
@@ -856,7 +901,8 @@ export default function ConversationPage({
               </Link>
               <div className="flex items-center space-x-3">
                 <div className="relative">
-                  {conversation.isGroup ? (
+                  {/* Show group icon only for actual group chats (3+ people) */}
+                  {conversation.isGroup && conversation.participants.length > 2 ? (
                     <div 
                       className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center cursor-pointer group-icon"
                       onClick={() => {
@@ -922,31 +968,49 @@ export default function ConversationPage({
                     </div>
                   ) : (
                     <div className="relative w-10 h-10 group">
-                      <Image
-                        src={conversation.otherParticipants[0]?.image || 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="%23cccccc"%3E%3Cpath d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 3c1.66 0 3 1.34 3 3s-1.34 3-3 3-3-1.34-3-3 1.34-3 3-3zm0 14.2c-2.5 0-4.71-1.28-6-3.22.03-1.99 4-3.08 6-3.08 1.99 0 5.97 1.09 6 3.08-1.29 1.94-3.5 3.22-6 3.22z"/%3E%3C/svg%3E'}
-                        alt={conversation.otherParticipants[0]?.name || 'User'}
-                        fill
-                        sizes="(max-width: 768px) 40px, 40px"
-                        className="rounded-full object-cover cursor-pointer ring-offset-2 ring-transparent hover:ring-2 hover:ring-blue-500 transition-all"
-                        onClick={() => handleProfileClick(conversation.otherParticipants[0])}
-                        title="View profile"
-                      />
-                      <div className="absolute bottom-0 right-0 bg-blue-500 rounded-full w-4 h-4 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow-md">
-                        <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                        </svg>
-                      </div>
+                      {/* Show loading or user profile picture */}
+                      {!participantsFullyLoaded || !conversation.otherParticipants.length ? (
+                        <div className="w-10 h-10 bg-gray-300 dark:bg-gray-600 rounded-full animate-pulse" />
+                      ) : conversation.otherParticipants[0]?.image ? (
+                        <Image
+                          src={conversation.otherParticipants[0].image}
+                          alt={conversation.otherParticipants[0]?.name || 'User'}
+                          fill
+                          sizes="(max-width: 768px) 40px, 40px"
+                          className="rounded-full object-cover cursor-pointer ring-offset-2 ring-transparent hover:ring-2 hover:ring-blue-500 transition-all"
+                          onClick={() => handleProfileClick(conversation.otherParticipants[0])}
+                          title="View profile"
+                        />
+                      ) : (
+                        <UserAvatar 
+                          size={40} 
+                          letter={conversation.otherParticipants[0]?.name?.charAt(0)?.toUpperCase() || 'U'}
+                        />
+                      )}
+                      {participantsFullyLoaded && conversation.otherParticipants.length > 0 && (
+                        <div className="absolute bottom-0 right-0 bg-blue-500 rounded-full w-4 h-4 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow-md">
+                          <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                          </svg>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
                 <div>
                   <h1 className="font-semibold text-gray-900 dark:text-gray-100">
-                    {conversation.isGroup
-                      ? conversation.name
-                      : getName(conversation.otherParticipants[0], userProfile)}
+                    {/* For DMs (2 people total or non-group), show the other user's name */}
+                    {!conversation.isGroup || conversation.participants.length === 2
+                      ? (conversation.otherParticipants.length > 0 
+                          ? (participantsFullyLoaded 
+                              ? getName(conversation.otherParticipants[0], userProfile)
+                              : 'Loading...')
+                          : 'Loading...')
+                      : conversation.name || 'Group Chat'}
                   </h1>
-                  {conversation.isGroup && (
+                  {/* Only show participant count for actual group chats (3+ people) */}
+                  {conversation.isGroup && conversation.participants.length > 2 && (
                     <p className="text-sm text-gray-500 dark:text-gray-400">
                       {conversation.participants.length} participants
                     </p>
@@ -997,142 +1061,146 @@ export default function ConversationPage({
         <span>Tip: Click on profile pictures to view user details</span>
       </div>
 
-      {/* Messages */}
-      <div className="flex-1 overflow-y-auto p-3 bg-gray-50 dark:bg-gray-900">
-        {!conversation ? (
-          <div className="space-y-4">
-            {[1, 2, 3, 4].map(i => (
-              <div key={i} className="animate-pulse flex flex-col">
-                <div className={`${i % 2 === 0 ? 'mr-auto' : 'ml-auto'} max-w-[70%]`}>
-                  <div className="h-10 bg-gray-200 dark:bg-gray-700 rounded-lg mb-1"></div>
-                  <div className="h-4 w-20 bg-gray-200 dark:bg-gray-700 rounded self-end mt-1"></div>
-                </div>
-              </div>
-            ))}
-          </div>
-        ) : messages.length === 0 ? (
-          <div className="h-full flex items-center justify-center">
-            <div className="text-center">
-              <div className="bg-gray-100 dark:bg-gray-800 rounded-full p-4 inline-block mb-4">
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 text-gray-400 dark:text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-                </svg>
-              </div>
-              <h3 className="text-lg font-medium text-gray-900 dark:text-gray-100 mb-1">
-                Start the conversation
-              </h3>
-              <p className="text-gray-500 dark:text-gray-400">
-                Send a message to begin chatting
-              </p>
-            </div>
-          </div>
-        ) : (
-          messages
-            .filter((message) => {
-              const isCurrentUser = message.senderId._id === session?.user?.id || 
-                                     message.senderId._id === session?.user?.email;
-              const isPending = pendingMessages.has(message._id);
-              
-              // Only include messages that aren't pending or are from the current user
-              return !isPending || isCurrentUser;
-            })
-            .map((message) => {
-              const isCurrentUser = message.senderId._id === session?.user?.id || 
-                                     message.senderId._id === session?.user?.email;
-            
-            return (
-              <div
-                key={message._id}
-                className={`flex ${
-                  isCurrentUser
-                    ? 'justify-end items-start'
-                    : 'justify-start items-start'
-                } mb-2 message-animate`}
-                style={{ marginBottom: '10px' }}
-              >
-                {!isCurrentUser && (
-                  <div className="flex-shrink-0 mr-2 mt-0.5">
-                    <div
-                      className="w-8 h-8 rounded-full bg-gray-300 dark:bg-gray-600 flex items-center justify-center cursor-pointer"
-                      onClick={() =>
-                        handleProfileClick(message.senderId)
-                      }
-                    >
-                      {getProfileImage(message.senderId) ? (
-                        <Image
-                          src={getProfileImage(message.senderId) as string}
-                          alt="User Avatar"
-                          width={32}
-                          height={32}
-                          className="rounded-full border border-gray-200 dark:border-gray-600"
-                        />
-                      ) : (
-                        <UserAvatar 
-                          size={32} 
-                          letter={getName(message.senderId, message.senderId.profile)?.charAt(0)}
-                        />
-                      )}
+      {/* Messages Window - Contained scrollable area */}
+      <div className="flex-1 p-4 min-h-0">
+        <div className="h-full bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 shadow-sm overflow-hidden flex flex-col">
+          <div className="flex-1 overflow-y-auto p-4 bg-gray-50 dark:bg-gray-900">
+            {!conversation ? (
+              <div className="space-y-4">
+                {[1, 2, 3, 4].map(i => (
+                  <div key={i} className="animate-pulse flex flex-col">
+                    <div className={`${i % 2 === 0 ? 'mr-auto' : 'ml-auto'} max-w-[70%]`}>
+                      <div className="h-10 bg-gray-200 dark:bg-gray-700 rounded-lg mb-1"></div>
+                      <div className="h-4 w-20 bg-gray-200 dark:bg-gray-700 rounded self-end mt-1"></div>
                     </div>
                   </div>
-                )}
-                <div className={`flex flex-col ${isCurrentUser ? 'items-end mr-1' : 'items-start'} max-w-[70%]`}>
-                  {!isCurrentUser && (
-                    <span 
-                      className="text-xs text-gray-600 dark:text-gray-300 mb-0.5 cursor-pointer"
-                      onClick={() => handleProfileClick(message.senderId)}
-                    >
-                      {getName(message.senderId, message.senderId.profile)}
-                    </span>
-                  )}
+                ))}
+              </div>
+            ) : messages.length === 0 ? (
+              <div className="h-full flex items-center justify-center">
+                <div className="text-center">
+                  <div className="bg-gray-100 dark:bg-gray-800 rounded-full p-4 inline-block mb-4">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 text-gray-400 dark:text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                    </svg>
+                  </div>
+                  <h3 className="text-lg font-medium text-gray-900 dark:text-gray-100 mb-1">
+                    Start the conversation
+                  </h3>
+                  <p className="text-gray-500 dark:text-gray-400">
+                    Send a message to begin chatting
+                  </p>
+                </div>
+              </div>
+            ) : (
+              messages
+                .filter((message) => {
+                  const isCurrentUser = message.senderId._id === session?.user?.id || 
+                                         message.senderId._id === session?.user?.email;
+                  const isPending = pendingMessages.has(message._id);
+                  
+                  // Only include messages that aren't pending or are from the current user
+                  return !isPending || isCurrentUser;
+                })
+                .map((message) => {
+                  const isCurrentUser = message.senderId._id === session?.user?.id || 
+                                         message.senderId._id === session?.user?.email;
+                
+                return (
                   <div
-                    className={`rounded-lg py-1.5 px-2.5 text-sm break-words ${
+                    key={message._id}
+                    className={`flex ${
                       isCurrentUser
-                        ? 'bg-blue-500 text-white rounded-tr-none'
-                        : 'bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-100 rounded-tl-none'
-                    } w-auto inline-block`}
-                    style={{
-                      maxWidth: '100%',
-                      width: 'auto',
-                      display: 'inline-block'
-                    }}
+                        ? 'justify-end items-start'
+                        : 'justify-start items-start'
+                    } mb-2 message-animate`}
+                    style={{ marginBottom: '10px' }}
                   >
-                    {message.content}
-                  </div>
-                  <div className={`text-xs text-gray-500 dark:text-gray-400 mt-0.5 ${isCurrentUser ? 'text-right' : 'text-left'}`} style={{width: 'auto', fontSize: '0.75rem'}}>
-                    {formatDate(message.createdAt)}
-                  </div>
-                </div>
-                {isCurrentUser && (
-                  <div className="flex-shrink-0 ml-1 mt-0.5">
-                    <div
-                      className="w-8 h-8 rounded-full bg-gray-300 dark:bg-gray-600 flex items-center justify-center cursor-pointer"
-                    >
-                      {session?.user?.image ? (
-                        <Image
-                          src={session.user.image}
-                          alt="Your Avatar"
-                          width={32}
-                          height={32}
-                          className="rounded-full border border-gray-200 dark:border-gray-600"
-                        />
-                      ) : (
-                        <UserAvatar 
-                          size={32} 
-                          letter={session?.user?.name?.charAt(0) || 'Y'} 
-                        />
+                    {!isCurrentUser && (
+                      <div className="flex-shrink-0 mr-2 mt-0.5">
+                        <div
+                          className="w-8 h-8 rounded-full bg-gray-300 dark:bg-gray-600 flex items-center justify-center cursor-pointer"
+                          onClick={() =>
+                            handleProfileClick(message.senderId)
+                          }
+                        >
+                          {getProfileImage(message.senderId) ? (
+                            <Image
+                              src={getProfileImage(message.senderId) as string}
+                              alt="User Avatar"
+                              width={32}
+                              height={32}
+                              className="rounded-full border border-gray-200 dark:border-gray-600"
+                            />
+                          ) : (
+                            <UserAvatar 
+                              size={32} 
+                              letter={getName(message.senderId, message.senderId.profile)?.charAt(0)}
+                            />
+                          )}
+                        </div>
+                      </div>
+                    )}
+                    <div className={`flex flex-col ${isCurrentUser ? 'items-end mr-1' : 'items-start'} max-w-[70%]`}>
+                      {!isCurrentUser && (
+                        <span 
+                          className="text-xs text-gray-600 dark:text-gray-300 mb-0.5 cursor-pointer"
+                          onClick={() => handleProfileClick(message.senderId)}
+                        >
+                          {getName(message.senderId, message.senderId.profile)}
+                        </span>
                       )}
+                      <div
+                        className={`rounded-lg py-1.5 px-2.5 text-sm break-words ${
+                          isCurrentUser
+                            ? 'bg-blue-500 text-white rounded-tr-none'
+                            : 'bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-100 rounded-tl-none'
+                        } w-auto inline-block`}
+                        style={{
+                          maxWidth: '100%',
+                          width: 'auto',
+                          display: 'inline-block'
+                        }}
+                      >
+                        {message.content}
+                      </div>
+                      <div className={`text-xs text-gray-500 dark:text-gray-400 mt-0.5 ${isCurrentUser ? 'text-right' : 'text-left'}`} style={{width: 'auto', fontSize: '0.75rem'}}>
+                        {formatDate(message.createdAt)}
+                      </div>
                     </div>
+                    {isCurrentUser && (
+                      <div className="flex-shrink-0 ml-1 mt-0.5">
+                        <div
+                          className="w-8 h-8 rounded-full bg-gray-300 dark:bg-gray-600 flex items-center justify-center cursor-pointer"
+                        >
+                          {session?.user?.image ? (
+                            <Image
+                              src={session.user.image}
+                              alt="Your Avatar"
+                              width={32}
+                              height={32}
+                              className="rounded-full border border-gray-200 dark:border-gray-600"
+                            />
+                          ) : (
+                            <UserAvatar 
+                              size={32} 
+                              letter={session?.user?.name?.charAt(0) || 'Y'} 
+                            />
+                          )}
+                        </div>
+                      </div>
+                    )}
                   </div>
-                )}
-              </div>
-            );
-          })
-        )}
-        <div ref={messagesEndRef} />
+                );
+              })
+            )}
+            <div ref={messagesEndRef} />
+          </div>
+        </div>
       </div>
 
-      {/* Message Input */}
-      <div className="p-4 border-t border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
+      {/* Message Input - Always visible at bottom */}
+      <div className="flex-shrink-0 p-4 border-t border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
         <form onSubmit={sendMessage} className="flex space-x-2">
           <input
             type="text"
@@ -1155,41 +1223,6 @@ export default function ConversationPage({
           </button>
         </form>
       </div>
-      
-      {/* Chat Info Modal */}
-      {showChatInfo && conversation && (
-        <ChatInfoModal
-          conversation={conversation}
-          currentUserId={session?.user?.email || ''}
-          onClose={() => setShowChatInfo(false)}
-          onViewProfile={handleProfileClick}
-        />
-      )}
-      
-      {/* User Profile Modal */}
-      {selectedUser && (
-        <UserProfileModal
-          userData={userProfile}
-          userProfile={selectedUser}
-          onClose={() => {
-            setSelectedUser(null);
-            setUserProfile(null);
-          }}
-          loading={loadingUserProfile}
-          displayName="Other's Profile"
-          onReport={() => setShowReportModal(true)}
-        />
-      )}
-      
-      {/* Report Modal */}
-      {showReportModal && selectedUser && (
-        <ReportUserModal
-          userEmail={selectedUser.email}
-          userName={getName(selectedUser, userProfile)}
-          onClose={() => setShowReportModal(false)}
-          onSuccess={handleReportSuccess}
-        />
-      )}
     </div>
   );
 } 

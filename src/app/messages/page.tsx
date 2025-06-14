@@ -62,78 +62,14 @@ export default function MessagesPage() {
   const [conversationsLoaded, setConversationsLoaded] = useState(false);
   const searchTimerRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Notification hooks
-  const { getUnreadCount } = useNotifications();
+  // Notification hooks - now also getting conversations from the same source
+  const { getUnreadCount, conversations: realtimeConversations, conversationsLoading } = useNotifications();
 
-  // Function to transform Firebase data to conversation format
-  const transformConversationData = useCallback(async (data: FirebaseConversation[], userEmail: string) => {
-    if (!data || data.length === 0 || !userEmail) return [];
-    
-    // Process each conversation with detailed participant data
-    const processedConversations = await Promise.all(data.map(async (conv: FirebaseConversation) => {
-      // Enrich participants with full user data including images
-      const participantsWithDetail = await enrichParticipantsWithUserData(
-        Array.isArray(conv.participants) ? conv.participants : []
-      );
-      
-      // Filter to get other participants with complete data
-      const otherParticipants = participantsWithDetail
-        .filter((p: any) => p._id !== userEmail && p.email !== userEmail)
-        .map((p: any) => ({
-          _id: p._id,
-          name: p.name || '',
-          image: p.image || ''
-        }));
-      
-      return {
-        _id: conv._id as string,
-        participants: participantsWithDetail,
-        otherParticipants,
-        lastMessage: conv.lastMessage 
-          ? {
-              content: typeof conv.lastMessage === 'string' 
-                ? '' 
-                : conv.lastMessage.content || '',
-              createdAt: typeof conv.lastMessage === 'string'
-                ? new Date().toISOString()
-                : conv.lastMessage.createdAt instanceof Timestamp
-                  ? conv.lastMessage.createdAt.toDate().toISOString()
-                  : new Date().toISOString()
-            }
-          : undefined,
-        isGroup: conv.isGroup || false,
-        name: conv.name || '',
-        updatedAt: conv.updatedAt instanceof Timestamp 
-          ? conv.updatedAt.toDate().toISOString() 
-          : conv.updatedAt instanceof Date
-            ? conv.updatedAt.toISOString()
-            : new Date().toISOString()
-      };
-    }));
-    
-    return processedConversations;
-  }, []);
-
-  // Update fetchConversations to use API route
-  const fetchConversations = useCallback(async () => {
-    if (!session?.user?.email) return;
-
-    try {
-      // Use API route instead of direct Firebase service
-      const response = await fetch('/api/conversations');
-      if (!response.ok) {
-        throw new Error('Failed to fetch conversations');
-      }
-      
-      const result = await response.json();
-      if (!result.success) {
-        throw new Error(result.error || 'Failed to fetch conversations');
-      }
-      
-      const conversationsData = result.data;
-      
-      // Transform the API response to match our expected format
-      const transformedConversations = conversationsData.map((conv: any) => ({
+  // Process conversations from NotificationContext to ensure synchronization
+  useEffect(() => {
+    if (realtimeConversations && realtimeConversations.length > 0) {
+      // Transform the real-time conversation data
+      const transformedConversations = realtimeConversations.map((conv: any) => ({
         _id: conv._id,
         participants: Array.isArray(conv.participants) 
           ? conv.participants.map((p: any) => ({
@@ -195,21 +131,11 @@ export default function MessagesPage() {
       
       setConversations(transformedConversations);
       setConversationsLoaded(true);
-    } catch (error) {
-      console.error('Error fetching conversations:', error);
+    } else if (!conversationsLoading) {
+      setConversations([]);
       setConversationsLoaded(true);
     }
-  }, [session?.user?.email]);
-
-  // Fetch conversations once (no polling to save quota)
-  useEffect(() => {
-    if (!session?.user?.email) return;
-    
-    // Only fetch once - no polling to save Firebase quota
-    fetchConversations();
-    
-    // TODO: Replace with Firebase real-time listeners
-  }, [session?.user?.email, fetchConversations]);
+  }, [realtimeConversations, conversationsLoading]);
 
   // Helper function to get user display name from survey firstName or other sources
   const getName = async (userId: string): Promise<string> => {
@@ -355,14 +281,18 @@ export default function MessagesPage() {
     setDeletingId(conversationId);
     
     try {
-      // Use Firebase service to delete the conversation
-      const result = await deleteFirebaseConversation(conversationId);
+      // Use API endpoint to delete the conversation
+      const response = await fetch(`/api/conversations/${conversationId}`, {
+        method: 'DELETE',
+      });
       
-      if (result && result.success) {
+      const result = await response.json();
+      
+      if (response.ok && result.success) {
         // Remove will happen automatically via the real-time listener, but we can also do it manually
         setConversations(prev => prev.filter(conv => conv._id !== conversationId));
       } else {
-        console.error('Error deleting conversation');
+        console.error('Error deleting conversation:', result.error || 'Unknown error');
         alert('Failed to delete conversation. Please try again.');
       }
     } catch (error) {
@@ -384,6 +314,10 @@ export default function MessagesPage() {
       }
       return conversation.otherParticipants[0]?.name || 'Loading...';
     }, [conversation.isGroup, conversation.name, conversation.otherParticipants]);
+
+    // Check if conversation has unread messages
+    const unreadCount = getUnreadCount(conversationId);
+    const hasUnreadMessages = unreadCount > 0;
 
     return (
       <div className="conversation-item relative bg-white dark:bg-gray-800 rounded-lg shadow-sm hover:shadow-md transition-shadow duration-200 mb-3">
@@ -411,29 +345,18 @@ export default function MessagesPage() {
                 {/* Notification Badge */}
                 <ConversationBadge 
                   conversationId={conversationId} 
-                  unreadCount={getUnreadCount(conversationId)} 
+                  unreadCount={unreadCount} 
                 />
               </div>
             </div>
             
             <div className="flex-1 min-w-0">
               <div className="flex items-center justify-between mb-1">
-                <h2 className="font-semibold text-lg truncate text-gray-900 dark:text-gray-100">
+                <h2 className={`text-lg truncate text-gray-900 dark:text-gray-100 ${
+                  hasUnreadMessages ? 'font-bold' : 'font-semibold'
+                }`}>
                   {displayName || (conversation.isGroup ? conversation.name : 'Loading...')}
                 </h2>
-                <span className="text-sm text-gray-500 dark:text-gray-400 whitespace-nowrap ml-2">
-                  {(() => {
-                    const date = conversation.updatedAt ? new Date(conversation.updatedAt) : new Date();
-                    if (isNaN(date.getTime())) {
-                      return 'Recently';
-                    }
-                    return date.toLocaleDateString(undefined, {
-                      month: 'short',
-                      day: 'numeric',
-                      year: date.getFullYear() !== new Date().getFullYear() ? 'numeric' : undefined
-                    });
-                  })()}
-                </span>
               </div>
               <div className="flex items-center justify-between">
                 {conversation.participants.length >= 3 && (
@@ -445,7 +368,11 @@ export default function MessagesPage() {
                   </p>
                 )}
                 {conversation.lastMessage && (
-                  <p className="text-sm truncate flex-1 ml-2 text-gray-600 dark:text-gray-400">
+                  <p className={`text-sm truncate flex-1 ml-2 ${
+                    hasUnreadMessages 
+                      ? 'text-gray-900 dark:text-gray-100 font-semibold' 
+                      : 'text-gray-600 dark:text-gray-400'
+                  }`}>
                     {conversation.lastMessage.content}
                   </p>
                 )}
@@ -463,10 +390,6 @@ export default function MessagesPage() {
         </div>
       </div>
     );
-  }, (prevProps, nextProps) => {
-    // Only re-render if something important changed
-    if (prevProps.conversation._id !== nextProps.conversation._id) return false;
-    return true;
   });
   
   // For debugging purposes

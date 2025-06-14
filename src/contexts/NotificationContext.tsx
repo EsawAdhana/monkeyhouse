@@ -13,6 +13,8 @@ interface NotificationContextType {
   unreadCounts: UnreadCounts;
   totalUnreadCount: number;
   activeConversationId: string | null;
+  conversations: any[];
+  conversationsLoading: boolean;
   setUnreadCount: (conversationId: string, count: number) => void;
   markConversationAsRead: (conversationId: string) => void;
   hasUnreadMessages: (conversationId: string) => boolean;
@@ -32,7 +34,7 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
   const totalUnreadCount = Object.values(unreadCounts).reduce((total, count) => total + count, 0);
 
   // Listen to conversations in real-time using server-side endpoint
-  const { data: conversations } = useServerRealtime<any[]>({
+  const { data: conversations, loading: conversationsLoading } = useServerRealtime<any[]>({
     endpoint: '/api/realtime/conversations',
     enabled: !!session?.user?.email,
     onData: (conversationsData: any[]) => {
@@ -134,6 +136,8 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
     unreadCounts,
     totalUnreadCount,
     activeConversationId,
+    conversations: conversations || [],
+    conversationsLoading,
     setUnreadCount,
     markConversationAsRead,
     hasUnreadMessages,

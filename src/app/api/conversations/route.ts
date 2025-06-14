@@ -3,7 +3,8 @@ import { getServerSession } from 'next-auth';
 import { 
   getConversationsByUser, 
   createConversation, 
-  getUser 
+  getUser,
+  enrichParticipantsWithUserData 
 } from '@/lib/firebaseService';
 
 export async function GET(req: Request) {
@@ -23,26 +24,32 @@ export async function GET(req: Request) {
     // Get conversations for the current user using Firebase
     const conversations = await getConversationsByUser(userEmail);
 
-    // Transform the conversations to include other participants' info
-    const transformedConversations = conversations.map(conv => {
-      const participants = Array.isArray(conv.participants) 
-        ? conv.participants.map((p: any) => typeof p === 'string' ? p : p)
-        : [];
-        
-      const otherParticipants = participants.filter(
-        (p: any) => p !== userEmail && p._id !== userEmail
+    // Transform the conversations to include other participants' info with enriched data
+    const transformedConversations = await Promise.all(conversations.map(async (conv) => {
+      // Enrich participants with full user data including images
+      const enrichedParticipants = await enrichParticipantsWithUserData(
+        Array.isArray(conv.participants) ? conv.participants : []
       );
+      
+      // Filter to get other participants with complete data
+      const otherParticipants = enrichedParticipants
+        .filter((p: any) => p._id !== userEmail && p.email !== userEmail)
+        .map((p: any) => ({
+          _id: p._id || p.email,
+          name: p.name || 'User',
+          image: p.image || ''
+        }));
       
       return {
         _id: conv._id,
-        participants: conv.participants,
+        participants: enrichedParticipants,
         otherParticipants,
         lastMessage: conv.lastMessage,
         isGroup: conv.isGroup,
         name: conv.name || (otherParticipants[0]?.name || 'Unknown User'),
         updatedAt: conv.updatedAt
       };
-    });
+    }));
 
     return NextResponse.json({ success: true, data: transformedConversations });
   } catch (error) {
