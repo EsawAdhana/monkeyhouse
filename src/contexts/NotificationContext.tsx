@@ -3,8 +3,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { useSession } from 'next-auth/react';
 import { useUnreadCounts } from '@/hooks/useUnreadCounts';
-import { useFirebaseRealtime } from '@/hooks/useFirebaseRealtime';
-import { db, collection, query, where } from '@/lib/firebase';
+import { useServerRealtime } from '@/hooks/useServerRealtime';
 
 interface UnreadCounts {
   [conversationId: string]: number;
@@ -13,10 +12,12 @@ interface UnreadCounts {
 interface NotificationContextType {
   unreadCounts: UnreadCounts;
   totalUnreadCount: number;
+  activeConversationId: string | null;
   setUnreadCount: (conversationId: string, count: number) => void;
   markConversationAsRead: (conversationId: string) => void;
   hasUnreadMessages: (conversationId: string) => boolean;
   getUnreadCount: (conversationId: string) => number;
+  setActiveConversation: (conversationId: string | null) => void;
 }
 
 const NotificationContext = createContext<NotificationContextType | undefined>(undefined);
@@ -24,29 +25,24 @@ const NotificationContext = createContext<NotificationContextType | undefined>(u
 export function NotificationProvider({ children }: { children: React.ReactNode }) {
   const { data: session } = useSession();
   const [unreadCounts, setUnreadCounts] = useState<UnreadCounts>({});
+  const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
   const { calculateUnreadCount } = useUnreadCounts();
 
   // Calculate total unread count across all conversations
   const totalUnreadCount = Object.values(unreadCounts).reduce((total, count) => total + count, 0);
 
-  // Set up real-time listeners for conversations
-  const conversationsQuery = session?.user?.email 
-    ? query(
-        collection(db, 'conversations'),
-        where('participants', 'array-contains', session.user.email)
-      )
-    : null;
-
-  // Listen to conversations in real-time
-  const { data: conversations } = useFirebaseRealtime({
+  // Listen to conversations in real-time using server-side endpoint
+  const { data: conversations } = useServerRealtime<any[]>({
+    endpoint: '/api/realtime/conversations',
     enabled: !!session?.user?.email,
-    subscriptionType: 'query',
-    target: conversationsQuery!,
     onData: (conversationsData: any[]) => {
       if (conversationsData && conversationsData.length > 0) {
         // When conversations change, recalculate unread counts
         updateUnreadCountsFromConversations(conversationsData);
       }
+    },
+    onError: (error) => {
+      console.error('Real-time conversations error:', error);
     }
   });
 
@@ -65,7 +61,8 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
             const messagesResult = await messagesResponse.json();
             if (messagesResult.success && messagesResult.data) {
               const unreadCount = calculateUnreadCount(messagesResult.data);
-              newUnreadCounts[conversation._id] = unreadCount;
+              // If this is the active conversation, don't show unread count
+              newUnreadCounts[conversation._id] = activeConversationId === conversation._id ? 0 : unreadCount;
             }
           }
         } catch (error) {
@@ -75,15 +72,18 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
     );
     
     setUnreadCounts(newUnreadCounts);
-  }, [session?.user?.email, calculateUnreadCount]);
+  }, [session?.user?.email, calculateUnreadCount, activeConversationId]);
 
   // Set unread count for a specific conversation
   const setUnreadCount = useCallback((conversationId: string, count: number) => {
+    // If this is the active conversation, always set count to 0
+    const finalCount = activeConversationId === conversationId ? 0 : Math.max(0, count);
+    
     setUnreadCounts(prev => ({
       ...prev,
-      [conversationId]: Math.max(0, count)
+      [conversationId]: finalCount
     }));
-  }, []);
+  }, [activeConversationId]);
 
   // Mark conversation as read (set count to 0)
   const markConversationAsRead = useCallback(async (conversationId: string) => {
@@ -107,6 +107,19 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
     }
   }, [session?.user?.email]);
 
+  // Set active conversation
+  const setActiveConversation = useCallback((conversationId: string | null) => {
+    setActiveConversationId(conversationId);
+    
+    // When entering a conversation, immediately mark it as read
+    if (conversationId) {
+      setUnreadCounts(prev => ({
+        ...prev,
+        [conversationId]: 0
+      }));
+    }
+  }, []);
+
   // Check if conversation has unread messages
   const hasUnreadMessages = useCallback((conversationId: string) => {
     return (unreadCounts[conversationId] || 0) > 0;
@@ -120,10 +133,12 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
   const value: NotificationContextType = {
     unreadCounts,
     totalUnreadCount,
+    activeConversationId,
     setUnreadCount,
     markConversationAsRead,
     hasUnreadMessages,
     getUnreadCount,
+    setActiveConversation,
   };
 
   return (

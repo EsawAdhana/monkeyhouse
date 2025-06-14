@@ -13,6 +13,7 @@ import { formatDistance } from 'date-fns';
 import ReportModal from '@/components/ReportModal';
 import { use } from 'react';
 import { useNotifications } from '@/contexts/NotificationContext';
+import { useMessageRealtime } from '@/hooks/useMessageRealtime';
 
 // Temporary interfaces to replace Firebase types
 interface FirebaseMessage {
@@ -37,8 +38,6 @@ const getMessagesByConversation = async (id: string) => {
   const result = await response.json();
   return result.success ? result.data : [];
 };
-
-
 
 const createMessage = async (messageData: any) => {
   const response = await fetch('/api/messages', {
@@ -112,7 +111,6 @@ export default function ConversationPage({
   const { conversationId } = params;
   const { data: session } = useSession();
   const router = useRouter();
-  const [messages, setMessages] = useState<Message[]>([]);
   const [conversation, setConversation] = useState<Conversation | null>(null);
   const [newMessage, setNewMessage] = useState('');
   const [isLoading, setIsLoading] = useState(true);
@@ -128,14 +126,64 @@ export default function ConversationPage({
   const [participantsFullyLoaded, setParticipantsFullyLoaded] = useState<boolean>(false);
 
   // Notification hook
-  const { markConversationAsRead } = useNotifications();
+  const { markConversationAsRead, setActiveConversation } = useNotifications();
 
-  // Mark conversation as read when user opens it
+  // Real-time messages using the new server-side system
+  const { messages: realtimeMessages, loading: messagesLoading, error: messagesError } = useMessageRealtime(conversationId);
+
+  // Transform real-time messages to expected format
+  const messages = realtimeMessages?.map((msg: any, index: number) => ({
+    _id: msg._id || `msg-${index}-${Date.now()}`,
+    content: msg.content,
+    senderId: typeof msg.senderId === 'string' 
+      ? { 
+          _id: msg.senderId,
+          name: '',
+          image: ''
+        }
+      : {
+          _id: msg.senderId._id || '',
+          name: msg.senderId.name || '',
+          image: msg.senderId.image || ''
+        },
+    readBy: Array.isArray(msg.readBy) 
+      ? msg.readBy.map((reader: any) => ({
+          _id: typeof reader === 'string' ? reader : reader._id || '',
+          name: typeof reader === 'string' ? '' : reader.name || '',
+          image: typeof reader === 'string' ? '' : reader.image || ''
+        }))
+      : [],
+    createdAt: (() => {
+      if (!msg.createdAt) return new Date().toISOString();
+      // Handle Firebase Timestamp
+      if (msg.createdAt && typeof msg.createdAt === 'object' && msg.createdAt.toDate) {
+        return msg.createdAt.toDate().toISOString();
+      }
+      // Handle Date objects
+      if (msg.createdAt instanceof Date) {
+        return msg.createdAt.toISOString();
+      }
+      // Handle strings
+      if (typeof msg.createdAt === 'string') {
+        return msg.createdAt;
+      }
+      // Fallback
+      return new Date().toISOString();
+    })()
+  })) || [];
+
+  // Mark conversation as read and set as active when user opens it
   useEffect(() => {
     if (conversationId && session?.user?.email) {
+      setActiveConversation(conversationId);
       markConversationAsRead(conversationId);
     }
-  }, [conversationId, session?.user?.email, markConversationAsRead]);
+    
+    // Clean up when leaving the conversation
+    return () => {
+      setActiveConversation(null);
+    };
+  }, [conversationId, session?.user?.email, markConversationAsRead, setActiveConversation]);
 
   // Scroll to bottom of messages
   const scrollToBottom = () => {
@@ -211,77 +259,6 @@ export default function ConversationPage({
     }
   };
 
-  // Transform Firebase data to match expected format
-  const transformMessages = (result: FirebaseMessage[]) => {
-    return result.map((msg: FirebaseMessage, index: number) => ({
-      _id: msg._id || `msg-${index}-${Date.now()}`, // Ensure unique ID
-      content: msg.content,
-      senderId: typeof msg.senderId === 'string' 
-        ? { 
-            _id: msg.senderId,
-            name: '',
-            image: ''
-          }
-        : {
-            _id: msg.senderId._id || '',
-            name: msg.senderId.name || '',
-            image: msg.senderId.image || ''
-          },
-      readBy: Array.isArray(msg.readBy) 
-        ? msg.readBy.map((reader: any) => ({
-            _id: typeof reader === 'string' ? reader : reader._id || '',
-            name: typeof reader === 'string' ? '' : reader.name || '',
-            image: typeof reader === 'string' ? '' : reader.image || ''
-          }))
-        : [],
-      createdAt: (() => {
-        if (!msg.createdAt) return new Date().toISOString();
-        // Handle Firebase Timestamp
-        if (msg.createdAt && typeof msg.createdAt === 'object' && msg.createdAt.toDate) {
-          return msg.createdAt.toDate().toISOString();
-        }
-        // Handle Date objects
-        if (msg.createdAt instanceof Date) {
-          return msg.createdAt.toISOString();
-        }
-        // Handle strings
-        if (typeof msg.createdAt === 'string') {
-          return msg.createdAt;
-        }
-        // Fallback
-        return new Date().toISOString();
-      })()
-    }));
-  };
-
-  // Fetch messages
-  const fetchMessages = async () => {
-    try {
-      // Get messages from Firebase
-      const result = await getMessagesByConversation(conversationId);
-      
-      if (result && result.length > 0) {
-        const messageData = transformMessages(result);
-        setMessages(messageData);
-        scrollToBottom();
-      }
-    } catch (error) {
-      console.error('Error fetching messages:', error);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  // Poll for new messages every 3 seconds
-  useEffect(() => {
-    if (!session?.user || !conversationId) return;
-    
-    fetchMessages();
-    
-    const interval = setInterval(fetchMessages, 3000);
-    return () => clearInterval(interval);
-  }, [session?.user, conversationId]);
-
   // Function to fetch profile data for a specific message sender
   const fetchProfileForMessage = async (messageId: string, senderId: string) => {
     try {
@@ -342,8 +319,6 @@ export default function ConversationPage({
       });
     }
   };
-
-
 
   // Helper function to get user name from session or first name from survey
   const getUserName = async () => {
@@ -415,8 +390,6 @@ export default function ConversationPage({
         createdAt: now
       };
       
-      // Update local state with the new message to avoid flickering
-      setMessages(prevMessages => [...prevMessages, localMessage]);
       setNewMessage(''); // Clear input immediately
       
       // Scroll to bottom immediately for better UX
@@ -426,14 +399,12 @@ export default function ConversationPage({
       const messageData = {
         content: messageContent,
         conversationId: conversationId,
-        senderId: senderData,
+        senderId: session.user.email, // Send just the email, server will handle the rest
         readBy: [session.user.email] // Mark as read by sender
       };
       
-      // Send to Firebase in the background
+      // Send to Firebase - the real-time listener will automatically update the UI
       await createMessage(messageData);
-      
-      // No need to update messages again as the real-time listener will replace our temporary message
       
     } catch (error) {
       console.error('Error sending message:', error);
@@ -515,13 +486,10 @@ export default function ConversationPage({
     // Fetch conversation data with priority
     const loadData = async () => {
       await fetchConversation();
-      fetchMessages();
+      setIsLoading(false); // Set loading to false after conversation is loaded
     };
     
     loadData();
-    
-    // Cleanup is handled by the hook
-    return () => {};
   }, [session, conversationId, router]);
 
   // Effect to auto-scroll when messages change
@@ -530,6 +498,13 @@ export default function ConversationPage({
       scrollToBottom();
     }
   }, [messages]);
+
+  // Update loading state based on messages loading
+  useEffect(() => {
+    if (!messagesLoading && conversation) {
+      setIsLoading(false);
+    }
+  }, [messagesLoading, conversation]);
 
   // Effect to close the participants menu when clicking outside of it
   useEffect(() => {

@@ -1,5 +1,6 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { onSnapshot, Query, DocumentData, DocumentReference } from 'firebase/firestore';
+import { useServerRealtime } from './useServerRealtime';
 
 type SubscriptionType = 'query' | 'document';
 
@@ -19,9 +20,8 @@ export function useFirebaseRealtime<T>({
   onError
 }: UseFirebaseRealtimeOptions<T>) {
   const [data, setData] = useState<T | null>(null);
-  const [loading, setLoading] = useState<boolean>(true);
+  const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<Error | null>(null);
-  const unsubscribeRef = useRef<(() => void) | null>(null);
   
   // Store callbacks in refs to avoid dependency issues
   const onDataRef = useRef(onData);
@@ -33,85 +33,75 @@ export function useFirebaseRealtime<T>({
     onErrorRef.current = onError;
   }, [onData, onError]);
 
-  const subscribe = useCallback(() => {
-    if (!enabled || !target) return;
-
-    setLoading(true);
-    setError(null);
-
-    try {
-      const unsubscribe = onSnapshot(
-        target,
-        (snapshot) => {
-          let result: any;
-
-          if (subscriptionType === 'query') {
-            // Handle collection query
-            const items: DocumentData[] = [];
-            snapshot.forEach((doc) => {
-              items.push({
-                _id: doc.id,
-                ...doc.data()
-              });
-            });
-            result = items as T;
-          } else {
-            // Handle single document
-            if (snapshot.exists()) {
-              result = {
-                _id: snapshot.id,
-                ...snapshot.data()
-              } as T;
-            } else {
-              result = null;
-            }
-          }
-
-          setData(result);
-          setLoading(false);
-          // Use the ref to access the current callback
-          onDataRef.current?.(result);
-        },
-        (err) => {
-          console.error('Firebase real-time subscription error:', err);
-          setError(err);
-          setLoading(false);
-          // Use the ref to access the current callback
-          onErrorRef.current?.(err);
-        }
-      );
-
-      unsubscribeRef.current = unsubscribe;
-      return unsubscribe;
-    } catch (err) {
-      const error = err instanceof Error ? err : new Error(String(err));
-      console.error('Error setting up Firebase subscription:', error);
-      setError(error);
-      setLoading(false);
-      // Use the ref to access the current callback
-      onErrorRef.current?.(error);
-      return () => {};
+  // Determine endpoint based on target
+  const endpoint = useCallback(() => {
+    // This is a simplified approach - in a real implementation you'd need to 
+    // parse the Firebase query to determine the appropriate endpoint
+    
+    // For now, we'll use a basic heuristic based on the target
+    const targetString = target?.toString() || '';
+    
+    if (targetString.includes('conversations')) {
+      return '/api/realtime/conversations';
+    } else if (targetString.includes('messages')) {
+      // Extract conversation ID from the query
+      // This is a simplification - you might need more robust query parsing
+      const conversationIdMatch = targetString.match(/conversationId.*==.*([a-zA-Z0-9-_]+)/);
+      const conversationId = conversationIdMatch?.[1];
+      if (conversationId) {
+        return `/api/realtime/messages/${conversationId}`;
+      }
     }
-  }, [enabled, target, subscriptionType]); // Remove onData and onError from dependencies
+    
+    return null;
+  }, [target]);
 
+  const endpointUrl = endpoint();
+
+  // Use server-side realtime if we have an endpoint, otherwise disable
+  const { 
+    data: serverData, 
+    loading: serverLoading, 
+    error: serverError 
+  } = useServerRealtime<T>({
+    endpoint: endpointUrl || '',
+    enabled: enabled && !!endpointUrl,
+    onData: (serverData) => {
+      setData(serverData);
+      onDataRef.current?.(serverData);
+    },
+    onError: (serverError) => {
+      setError(serverError);
+      onErrorRef.current?.(serverError);
+    }
+  });
+
+  // Update local state based on server realtime
   useEffect(() => {
-    const unsubscribe = subscribe();
+    setData(serverData);
+    setLoading(serverLoading);
+    setError(serverError);
+  }, [serverData, serverLoading, serverError]);
 
-    return () => {
-      if (unsubscribeRef.current) {
-        unsubscribeRef.current();
-        unsubscribeRef.current = null;
-      }
-      if (unsubscribe) {
-        unsubscribe();
-      }
-    };
-  }, [subscribe]);
+  // If no endpoint is available, fall back to disabled state
+  useEffect(() => {
+    if (!endpointUrl && enabled) {
+      console.warn('No server-side realtime endpoint available for this query, real-time updates disabled');
+      setLoading(false);
+      setData(null);
+      setError(null);
+    }
+  }, [endpointUrl, enabled]);
+
+  const refresh = useCallback(() => {
+    // For server-side realtime, refresh is handled by reconnection
+    console.log('Refresh requested for server-side realtime connection');
+  }, []);
 
   return {
     data,
     loading,
     error,
-    refresh: subscribe,
+    refresh,
   };
 } 

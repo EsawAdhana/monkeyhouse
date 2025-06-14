@@ -2,8 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useSession } from 'next-auth/react';
-import { useFirebaseRealtime } from './useFirebaseRealtime';
-import { db, collection, query, where, orderBy } from '@/lib/firebase';
+import { useServerRealtime } from './useServerRealtime';
 import { useNotifications } from '@/contexts/NotificationContext';
 import { useUnreadCounts } from './useUnreadCounts';
 
@@ -12,26 +11,19 @@ export function useMessageRealtime(conversationId?: string) {
   const { setUnreadCount } = useNotifications();
   const { calculateUnreadCount } = useUnreadCounts();
 
-  // Set up real-time listener for messages in a specific conversation
-  const messagesQuery = conversationId 
-    ? query(
-        collection(db, 'messages'),
-        where('conversationId', '==', conversationId),
-        orderBy('createdAt', 'asc')
-      )
-    : null;
-
-  // Listen to messages in real-time
-  const { data: messages, loading, error } = useFirebaseRealtime({
+  // Use server-side real-time for messages in a specific conversation
+  const { data: messages, loading, error } = useServerRealtime<any[]>({
+    endpoint: conversationId ? `/api/realtime/messages/${conversationId}` : '',
     enabled: !!conversationId && !!session?.user?.email,
-    subscriptionType: 'query',
-    target: messagesQuery!,
     onData: (messagesData: any[]) => {
       if (messagesData && conversationId) {
         // Calculate unread count for this conversation
         const unreadCount = calculateUnreadCount(messagesData);
         setUnreadCount(conversationId, unreadCount);
       }
+    },
+    onError: (err) => {
+      console.error('Real-time message error:', err);
     }
   });
 
@@ -49,37 +41,17 @@ export function useGlobalMessageRealtime() {
   const { calculateUnreadCount } = useUnreadCounts();
   const [conversationIds, setConversationIds] = useState<string[]>([]);
 
-  // Set up real-time listener for all messages the user is involved in
+  // Note: This approach would require multiple SSE connections
+  // For better performance, consider creating a single endpoint that handles all conversations
   useEffect(() => {
     if (!session?.user?.email || conversationIds.length === 0) return;
 
-    const unsubscribers: (() => void)[] = [];
+    console.log('Setting up global message real-time listeners for conversations:', conversationIds);
 
-    // Listen to messages for each conversation
-    conversationIds.forEach(conversationId => {
-      const messagesQuery = query(
-        collection(db, 'messages'),
-        where('conversationId', '==', conversationId),
-        orderBy('createdAt', 'asc')
-      );
-
-      // This will set up individual listeners for each conversation
-      const { data: messages } = useFirebaseRealtime({
-        enabled: true,
-        subscriptionType: 'query',
-        target: messagesQuery,
-        onData: (messagesData: any[]) => {
-          if (messagesData) {
-            const unreadCount = calculateUnreadCount(messagesData);
-            setUnreadCount(conversationId, unreadCount);
-          }
-        }
-      });
-    });
-
-    return () => {
-      unsubscribers.forEach(unsubscribe => unsubscribe());
-    };
+    // In a production implementation, you might want to create a single endpoint
+    // that handles multiple conversations to avoid too many SSE connections
+    // For now, we'll disable this hook and rely on the NotificationContext
+    
   }, [session?.user?.email, conversationIds, setUnreadCount, calculateUnreadCount]);
 
   return {
