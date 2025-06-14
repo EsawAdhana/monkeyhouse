@@ -127,14 +127,14 @@ export default function ChatInfoModal({
               <div
                 key={participant._id}
                 className={`flex items-center p-3 rounded-lg ${
-                  participant._id === currentUserId 
+                  participant._id === currentUserId || participant.email === currentUserId
                     ? 'bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-800' 
                     : isDeletedUser(participant)
                       ? 'bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700'
                       : 'hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer'
                 }`}
                 onClick={() => {
-                  if (!isDeletedUser(participant) && participant._id !== currentUserId) {
+                  if (!isDeletedUser(participant) && participant._id !== currentUserId && participant.email !== currentUserId) {
                     onViewProfile(participant);
                   }
                 }}
@@ -149,7 +149,7 @@ export default function ChatInfoModal({
                     sizes="(max-width: 768px) 40px, 40px"
                     className="rounded-full object-cover"
                   />
-                  {participant._id === currentUserId && (
+                  {(participant._id === currentUserId || participant.email === currentUserId) && (
                     <div className="absolute -bottom-1 -right-1 bg-blue-500 text-white text-xs font-bold rounded-full min-w-5 h-5 flex items-center justify-center px-1">
                       You
                     </div>
@@ -158,7 +158,7 @@ export default function ChatInfoModal({
                 <div>
                   <div className="text-sm font-medium text-gray-800 dark:text-gray-200">
                     {getName(participant)}
-                    {participant._id === currentUserId ? ' (You)' : ''}
+                    {(participant._id === currentUserId || participant.email === currentUserId) ? ' (You)' : ''}
                   </div>
                   {isDeletedUser(participant) && (
                     <div className="text-xs text-gray-500 dark:text-gray-400">

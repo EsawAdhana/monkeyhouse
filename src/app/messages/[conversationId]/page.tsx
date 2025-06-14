@@ -1233,7 +1233,7 @@ export default function ConversationPage({
       {showChatInfo && (
         <ChatInfoModal
           conversation={conversation}
-          currentUserId={session?.user?.id || session?.user?.email}
+          currentUserId={session?.user?.email || session?.user?.id}
           onClose={() => setShowChatInfo(false)}
           onViewProfile={(participant) => {
             setShowChatInfo(false);
