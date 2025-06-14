@@ -365,8 +365,14 @@ export default function DashboardPage() {
                 disabled={isCreatingGroup || selectedUsers.length < 1 || (selectedUsers.length > 1 && !groupName.trim())}
                 className="px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg disabled:opacity-50 flex items-center"
               >
-                <FiUsers className="mr-2" />
-                {isCreatingGroup ? 'Creating...' : selectedUsers.length === 1 ? 'Start Conversation' : 'Create Group Chat'}
+                {selectedUsers.length <= 1 ? (
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-2 transform rotate-90" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+                  </svg>
+                ) : (
+                  <FiUsers className="mr-2" />
+                )}
+                {isCreatingGroup ? 'Creating...' : selectedUsers.length <= 1 ? 'Send DM' : 'Start Conversation'}
               </button>
               <button
                 onClick={() => {

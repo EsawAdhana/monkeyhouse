@@ -9,6 +9,7 @@ import { FiFlag, FiX, FiUsers, FiMapPin, FiCalendar, FiList, FiStar, FiInfo, FiU
 import UserProfileModal from '@/components/UserProfileModal';
 import ReportUserModal from '@/components/ReportUserModal';
 import ChatInfoModal from '@/components/ChatInfoModal';
+import LayeredAvatars from '@/components/LayeredAvatars';
 import { formatDistance } from 'date-fns';
 import ReportModal from '@/components/ReportModal';
 import { use } from 'react';
@@ -904,7 +905,7 @@ export default function ConversationPage({
                   {/* Show group icon only for actual group chats (3+ people) */}
                   {conversation.isGroup && conversation.participants.length > 2 ? (
                     <div 
-                      className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center cursor-pointer group-icon"
+                      className="cursor-pointer group-icon"
                       onClick={() => {
                         // Show a list of participants that can be clicked
                         const menu = document.getElementById('participants-menu');
@@ -913,7 +914,11 @@ export default function ConversationPage({
                         }
                       }}
                     >
-                      <FiUsers className="h-6 w-6 text-blue-600" />
+                      <LayeredAvatars 
+                        participants={conversation.participants}
+                        size={40}
+                        maxDisplay={3}
+                      />
                       {/* Participants dropdown menu */}
                       <div id="participants-menu" className="absolute top-12 left-0 mt-2 w-64 bg-white dark:bg-gray-800 rounded-md shadow-lg z-10 border border-gray-200 dark:border-gray-700 hidden">
                         <div className="p-3 border-b border-gray-200 dark:border-gray-700">

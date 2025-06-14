@@ -13,23 +13,8 @@ export default function SurveyPage() {
   
   // Function to handle successful survey submission
   const handleSurveySuccess = () => {
-    console.log('Survey submitted successfully, navigating to dashboard...');
-    
-    // Use multiple navigation methods to ensure redirection works
-    try {
-      router.push('/dashboard');
-    } catch (e) {
-      console.error('Router push failed:', e);
-    }
-    
-    // Fallback navigation methods
-    setTimeout(() => {
-      try {
-        window.location.href = '/dashboard';
-      } catch (e) {
-        console.error('Location redirect failed:', e);
-      }
-    }, 300);
+    console.log('Survey submitted successfully');
+    // No automatic navigation - let the user click the modal button
   };
   
   if (status === 'loading') {
