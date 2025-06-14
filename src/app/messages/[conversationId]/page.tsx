@@ -1040,7 +1040,7 @@ export default function ConversationPage({
                       className="w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700"
                       role="menuitem"
                     >
-                      Chat Info
+                      Members List
                     </button>
                   </div>
                 </div>
@@ -1223,6 +1223,45 @@ export default function ConversationPage({
           </button>
         </form>
       </div>
+
+      {/* Chat Info Modal */}
+      {showChatInfo && (
+        <ChatInfoModal
+          conversation={conversation}
+          currentUserId={session?.user?.id || session?.user?.email}
+          onClose={() => setShowChatInfo(false)}
+          onViewProfile={(participant) => {
+            setShowChatInfo(false);
+            handleProfileClick(participant);
+          }}
+        />
+      )}
+
+      {/* Other modals */}
+      {selectedUser && (
+        <UserProfileModal
+          userData={userProfile}
+          userProfile={{
+            name: selectedUser.name,
+            email: selectedUser.email,
+            image: selectedUser.image
+          }}
+          onClose={() => setSelectedUser(null)}
+          onReport={() => {
+            setSelectedUser(null);
+            setShowReportModal(true);
+          }}
+          loading={loadingUserProfile}
+        />
+      )}
+
+      {showReportModal && (
+        <ReportUserModal
+          targetUserId={selectedUser?.email}
+          onClose={() => setShowReportModal(false)}
+          onSuccess={handleReportSuccess}
+        />
+      )}
     </div>
   );
 } 

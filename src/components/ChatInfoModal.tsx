@@ -110,7 +110,7 @@ export default function ChatInfoModal({
         {/* Header */}
         <div className="p-4 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center">
           <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
-            Chat Info
+            Members List
           </h2>
           <button
             onClick={onClose}

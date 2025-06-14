@@ -113,8 +113,30 @@ export async function GET(req: NextRequest) {
                 ...doc.data()
               }));
 
+              // Filter out conversations that have no messages
+              const conversationsWithMessages = [];
+              for (const conversation of conversations) {
+                try {
+                  // Check if this conversation has any messages
+                  const messagesSnapshot = await adminDb
+                    .collection('messages')
+                    .where('conversationId', '==', conversation._id)
+                    .limit(1)
+                    .get();
+                  
+                  // Only include conversations that have at least one message
+                  if (!messagesSnapshot.empty) {
+                    conversationsWithMessages.push(conversation);
+                  }
+                } catch (error) {
+                  console.error(`Error checking messages for conversation ${conversation._id}:`, error);
+                  // On error, include the conversation to be safe
+                  conversationsWithMessages.push(conversation);
+                }
+              }
+
               // Populate participant data with user information
-              const populatedConversations = await populateConversationParticipants(conversations, userEmail);
+              const populatedConversations = await populateConversationParticipants(conversationsWithMessages, userEmail);
 
               const data = `data: ${JSON.stringify({ 
                 type: 'conversations', 
