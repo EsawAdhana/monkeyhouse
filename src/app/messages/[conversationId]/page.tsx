@@ -131,6 +131,7 @@ interface Conversation {
   otherParticipants: Participant[];
   isGroup: boolean;
   name: string;
+  hiddenBy?: string[];
 }
 
 // Simple UserAvatar component
@@ -170,6 +171,7 @@ export default function ConversationPage({
   const [showReportModal, setShowReportModal] = useState(false);
   const [pendingMessages, setPendingMessages] = useState<Set<string>>(new Set());
   const [participantsFullyLoaded, setParticipantsFullyLoaded] = useState<boolean>(false);
+  const [isConversationHidden, setIsConversationHidden] = useState<boolean>(false);
 
   // Notification hook
   const { markConversationAsRead, setActiveConversation } = useNotifications();
@@ -269,10 +271,19 @@ export default function ConversationPage({
                 }))
             : [],
           isGroup: result.isGroup || false,
-          name: result.name || ''
+          name: result.name || '',
+          hiddenBy: result.hiddenBy || []
         };
         
         setConversation(conversationData);
+        
+        // Check if this conversation is hidden by the current user
+        const userEmail = session?.user?.email;
+        if (userEmail && result.hiddenBy && result.hiddenBy.includes(userEmail)) {
+          setIsConversationHidden(true);
+        } else {
+          setIsConversationHidden(false);
+        }
         
         // Now enrich the participants data to avoid the flash of default content
         if (Array.isArray(result.participants)) {
@@ -1013,6 +1024,11 @@ export default function ConversationPage({
                               : 'Loading...')
                           : 'Loading...')
                       : conversation.name || 'Group Chat'}
+                    {isConversationHidden && (
+                      <span className="ml-2 text-sm text-gray-400 dark:text-gray-500 font-normal">
+                        (HIDDEN)
+                      </span>
+                    )}
                   </h1>
                   {/* Only show participant count for actual group chats (3+ people) */}
                   {conversation.isGroup && conversation.participants.length > 2 && (
