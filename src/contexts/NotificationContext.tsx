@@ -52,11 +52,18 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
   const updateUnreadCountsFromConversations = useCallback(async (conversationsData: any[]) => {
     if (!session?.user?.email || !conversationsData) return;
 
+    const userEmail = session.user.email;
     const newUnreadCounts: UnreadCounts = {};
     
-    // For each conversation, fetch messages and calculate unread count
+    // Filter out conversations hidden by the current user
+    const visibleConversations = conversationsData.filter((conversation: any) => {
+      const hiddenBy = conversation.hiddenBy || [];
+      return !hiddenBy.includes(userEmail);
+    });
+    
+    // For each visible conversation, fetch messages and calculate unread count
     await Promise.all(
-      conversationsData.map(async (conversation: any) => {
+      visibleConversations.map(async (conversation: any) => {
         try {
           const messagesResponse = await fetch(`/api/messages?conversationId=${conversation._id}`);
           if (messagesResponse.ok) {
@@ -78,6 +85,17 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
 
   // Set unread count for a specific conversation
   const setUnreadCount = useCallback((conversationId: string, count: number) => {
+    // Check if this conversation is hidden by the current user
+    const conversation = conversations?.find((conv: any) => conv._id === conversationId);
+    if (conversation) {
+      const hiddenBy = conversation.hiddenBy || [];
+      const userEmail = session?.user?.email;
+      if (userEmail && hiddenBy.includes(userEmail)) {
+        // Don't set unread count for hidden conversations
+        return;
+      }
+    }
+    
     // If this is the active conversation, always set count to 0
     const finalCount = activeConversationId === conversationId ? 0 : Math.max(0, count);
     
@@ -85,7 +103,7 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
       ...prev,
       [conversationId]: finalCount
     }));
-  }, [activeConversationId]);
+  }, [activeConversationId, conversations, session?.user?.email]);
 
   // Mark conversation as read (set count to 0)
   const markConversationAsRead = useCallback(async (conversationId: string) => {

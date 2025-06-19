@@ -23,6 +23,10 @@ export async function GET(req: Request) {
 
     const userEmail = session.user.email;
     
+    // Check if we should show hidden conversations
+    const url = new URL(req.url);
+    const showHidden = url.searchParams.get('showHidden') === 'true';
+    
     // Get conversations for the current user using Firebase
     const conversations = await getConversationsByUser(userEmail);
 
@@ -49,11 +53,18 @@ export async function GET(req: Request) {
         lastMessage: conv.lastMessage,
         isGroup: conv.isGroup,
         name: conv.name || (otherParticipants[0]?.name || 'Unknown User'),
-        updatedAt: conv.updatedAt
+        updatedAt: conv.updatedAt,
+        hiddenBy: conv.hiddenBy || []
       };
     }));
 
-    return NextResponse.json({ success: true, data: transformedConversations });
+    // Filter conversations based on whether they're hidden by the current user
+    const filteredConversations = transformedConversations.filter(conv => {
+      const isHiddenByUser = conv.hiddenBy.includes(userEmail);
+      return showHidden ? isHiddenByUser : !isHiddenByUser;
+    });
+
+    return NextResponse.json({ success: true, data: filteredConversations });
   } catch (error) {
     console.error('Error fetching conversations:', error);
     return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });

@@ -5,7 +5,7 @@ import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import Image from 'next/image';
-import { FiUsers } from 'react-icons/fi';
+import { FiUsers, FiEye, FiEyeOff, FiTrash2 } from 'react-icons/fi';
 import { useNotifications } from '@/contexts/NotificationContext';
 import { ConversationBadge } from '@/components/NotificationBadge';
 import LayeredAvatars from '@/components/LayeredAvatars';
@@ -27,6 +27,8 @@ interface Conversation {
   isGroup: boolean;
   name: string;
   updatedAt: string;
+  hiddenBy?: string[];
+  deletedBy?: string[];
 }
 
 // Helper function to compare two conversations for equality
@@ -61,6 +63,13 @@ export default function MessagesPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [conversationsLoaded, setConversationsLoaded] = useState(false);
+  const [showHidden, setShowHidden] = useState(false);
+  const [hiddenConversations, setHiddenConversations] = useState<Conversation[]>([]);
+  const [showHideConfirmModal, setShowHideConfirmModal] = useState(false);
+  const [conversationToHide, setConversationToHide] = useState<string | null>(null);
+  const [hidingId, setHidingId] = useState<string | null>(null);
+  const [showDeleteConfirmModal, setShowDeleteConfirmModal] = useState(false);
+  const [conversationToDelete, setConversationToDelete] = useState<string | null>(null);
   const searchTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   // Notification hooks - now also getting conversations from the same source
@@ -111,6 +120,8 @@ export default function MessagesPage() {
           : undefined,
         isGroup: conv.isGroup || false,
         name: conv.name || '',
+        hiddenBy: conv.hiddenBy || [],
+        deletedBy: conv.deletedBy || [],
         updatedAt: (() => {
           if (!conv.updatedAt) return new Date().toISOString();
           // Handle Firebase Timestamp
@@ -130,20 +141,49 @@ export default function MessagesPage() {
         })()
       }));
       
-      // Sort conversations by updatedAt (most recent first)
-      transformedConversations.sort((a, b) => {
+      const userEmail = session?.user?.email;
+      if (!userEmail) {
+        setConversations(transformedConversations);
+        setConversationsLoaded(true);
+        return;
+      }
+      
+      // Filter out conversations deleted by the current user
+      const nonDeletedConversations = transformedConversations.filter((conv: Conversation) => {
+        return !conv.deletedBy.includes(userEmail);
+      });
+      
+      // Separate visible and hidden conversations from non-deleted ones
+      const visibleConversations = nonDeletedConversations.filter((conv: Conversation) => {
+        return !conv.hiddenBy.includes(userEmail);
+      });
+      
+      const hiddenConversationsData = nonDeletedConversations.filter((conv: Conversation) => {
+        return conv.hiddenBy.includes(userEmail);
+      });
+      
+      // Sort both lists by updatedAt (most recent first)
+      visibleConversations.sort((a, b) => {
         const aTime = new Date(a.updatedAt).getTime();
         const bTime = new Date(b.updatedAt).getTime();
         return bTime - aTime; // Most recent first
       });
       
-      setConversations(transformedConversations);
+      hiddenConversationsData.sort((a, b) => {
+        const aTime = new Date(a.updatedAt).getTime();
+        const bTime = new Date(b.updatedAt).getTime();
+        return bTime - aTime; // Most recent first
+      });
+      
+      setConversations(visibleConversations);
+      setHiddenConversations(hiddenConversationsData);
       setConversationsLoaded(true);
     } else if (!conversationsLoading) {
       setConversations([]);
+      setHiddenConversations([]);
       setConversationsLoaded(true);
     }
-  }, [realtimeConversations, conversationsLoading]);
+  }, [realtimeConversations, conversationsLoading, session?.user?.email]);
 
   // Helper function to get user display name from survey firstName or other sources
   const getName = async (userId: string): Promise<string> => {
@@ -319,8 +359,9 @@ export default function MessagesPage() {
   };
 
   // Modified component to handle displaying conversation names properly - wrapped in memo to prevent unnecessary re-renders
-  const ConversationItem = memo(({ conversation }: { 
+  const ConversationItem = memo(({ conversation, isHidden = false }: { 
     conversation: Conversation;
+    isHidden?: boolean;
   }) => {
     const conversationId = conversation._id;
     const displayName = useMemo(() => {
@@ -335,7 +376,7 @@ export default function MessagesPage() {
     const hasUnreadMessages = unreadCount > 0;
 
     return (
-      <div className="conversation-item relative bg-white dark:bg-gray-800 rounded-lg shadow-sm hover:shadow-md transition-shadow duration-200 mb-3">
+      <div className="conversation-item relative bg-white dark:bg-gray-800 rounded-lg shadow-sm hover:shadow-md transition-shadow duration-200 mb-3 group">
         <div
           className="flex items-center p-4 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors duration-150 rounded-lg"
           style={{ position: 'relative' }}
@@ -403,6 +444,56 @@ export default function MessagesPage() {
               </div>
             </div>
           </div>
+
+          {/* Hide/Unhide button - appears on hover */}
+          {!isHidden ? (
+            <button
+              onClick={(e) => handleHideClick(e, conversationId)}
+              disabled={hidingId === conversationId}
+              className="absolute top-2 right-2 z-20 opacity-0 group-hover:opacity-100 transition-opacity duration-200 p-2 rounded-full hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
+              title="Hide conversation"
+            >
+              {hidingId === conversationId ? (
+                <div className="animate-spin w-4 h-4 border-2 border-current border-t-transparent rounded-full" />
+              ) : (
+                <FiEyeOff className="w-4 h-4" />
+              )}
+            </button>
+          ) : (
+            <div className="absolute top-2 right-2 z-20 flex flex-col space-y-1">
+              {/* Unhide button */}
+              <button
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  unhideConversation(conversationId);
+                }}
+                disabled={hidingId === conversationId}
+                className="p-2 rounded-full hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
+                title="Unhide conversation"
+              >
+                {hidingId === conversationId ? (
+                  <div className="animate-spin w-4 h-4 border-2 border-current border-t-transparent rounded-full" />
+                ) : (
+                  <FiEye className="w-4 h-4" />
+                )}
+              </button>
+              
+              {/* Delete button */}
+              <button
+                onClick={(e) => handleDeleteClick(e, conversationId)}
+                disabled={deletingId === conversationId}
+                className="p-2 rounded-full hover:bg-red-100 dark:hover:bg-red-900/30 text-gray-500 dark:text-gray-400 hover:text-red-600 dark:hover:text-red-400"
+                title="Delete conversation"
+              >
+                {deletingId === conversationId ? (
+                  <div className="animate-spin w-4 h-4 border-2 border-current border-t-transparent rounded-full" />
+                ) : (
+                  <FiTrash2 className="w-4 h-4" />
+                )}
+              </button>
+            </div>
+          )}
           
           {/* Clickable overlay */}
           <Link
@@ -425,6 +516,137 @@ export default function MessagesPage() {
   const stableDeleteConversation = useCallback((e: React.MouseEvent, id: string) => {
     return deleteConversation(e, id);
   }, [deleteConversation]);
+
+  // Function to hide a conversation
+  const hideConversation = async (conversationId: string) => {
+    if (!session?.user?.email) return;
+    
+    setHidingId(conversationId);
+    try {
+      const response = await fetch(`/api/conversations/${conversationId}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ action: 'hide' }),
+      });
+
+      if (response.ok) {
+        // Real-time updates will automatically handle moving the conversation
+        // from visible to hidden list, so we don't need manual state updates
+        console.log('Conversation hidden successfully');
+      } else {
+        console.error('Failed to hide conversation');
+      }
+    } catch (error) {
+      console.error('Error hiding conversation:', error);
+    } finally {
+      setHidingId(null);
+      setShowHideConfirmModal(false);
+      setConversationToHide(null);
+    }
+  };
+
+  // Function to unhide a conversation
+  const unhideConversation = async (conversationId: string) => {
+    if (!session?.user?.email) return;
+    
+    setHidingId(conversationId);
+    try {
+      const response = await fetch(`/api/conversations/${conversationId}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ action: 'unhide' }),
+      });
+
+      if (response.ok) {
+        // Real-time updates will automatically handle moving the conversation
+        // from hidden to visible list, so we don't need manual state updates
+        console.log('Conversation unhidden successfully');
+      } else {
+        console.error('Failed to unhide conversation');
+      }
+    } catch (error) {
+      console.error('Error unhiding conversation:', error);
+    } finally {
+      setHidingId(null);
+    }
+  };
+
+  // Function to delete a conversation for the current user
+  const deleteConversationForUser = async (conversationId: string) => {
+    if (!session?.user?.email) return;
+    
+    setDeletingId(conversationId);
+    try {
+      const response = await fetch(`/api/conversations/${conversationId}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ action: 'delete' }),
+      });
+
+      if (response.ok) {
+        // Real-time updates will automatically filter out the deleted conversation
+        console.log('Conversation deleted successfully');
+      } else {
+        console.error('Failed to delete conversation');
+      }
+    } catch (error) {
+      console.error('Error deleting conversation:', error);
+    } finally {
+      setDeletingId(null);
+      setShowDeleteConfirmModal(false);
+      setConversationToDelete(null);
+    }
+  };
+
+  // Function to fetch hidden conversations
+  const fetchHiddenConversations = async () => {
+    // No longer needed since we get real-time updates for hidden conversations
+    // The hidden conversations are now updated automatically in the main useEffect
+    return;
+  };
+
+  // Handle hide conversation confirmation
+  const handleHideClick = (e: React.MouseEvent, conversationId: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setConversationToHide(conversationId);
+    setShowHideConfirmModal(true);
+  };
+
+  const confirmHideConversation = () => {
+    if (conversationToHide) {
+      hideConversation(conversationToHide);
+    }
+  };
+
+  // Handle delete conversation confirmation
+  const handleDeleteClick = (e: React.MouseEvent, conversationId: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setConversationToDelete(conversationId);
+    setShowDeleteConfirmModal(true);
+  };
+
+  const confirmDeleteConversation = () => {
+    if (conversationToDelete) {
+      deleteConversationForUser(conversationToDelete);
+    }
+  };
+
+  // Fetch hidden conversations on component mount
+  useEffect(() => {
+    if (session?.user?.email) {
+      fetchHiddenConversations();
+    }
+  }, [session?.user?.email]);
+
+
 
   // Add loading state component
   if (!conversationsLoaded && conversations.length === 0) {
@@ -455,35 +677,156 @@ export default function MessagesPage() {
   }
 
   return (
-    <main className="min-h-screen bg-gray-50 dark:bg-gray-900 py-6 px-4">
+    <main className="min-h-screen bg-gray-50 dark:bg-gray-900 py-6 px-4 relative">
       <div className="max-w-4xl mx-auto">
         <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-8">Messages</h1>
+
         {/* Conversations List */}
         <div className="container mx-auto px-4">
           <div className="max-w-3xl mx-auto space-y-4">
-            {conversations.length === 0 ? (
-              <div className="bg-white dark:bg-gray-800 rounded-xl p-8 text-center border border-gray-100 dark:border-gray-700 shadow-sm">
-                <div className="flex justify-center mb-4">
-                  <div className="w-16 h-16 rounded-full bg-gray-100 dark:bg-gray-700 flex items-center justify-center">
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 text-gray-400 dark:text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-                    </svg>
-                  </div>
+            {showHidden ? (
+              // Hidden conversations view
+              <div>
+                <div className="flex items-center justify-between mb-6">
+                  <h2 className="text-xl font-semibold text-gray-900 dark:text-white flex items-center">
+                    <FiEyeOff className="mr-2" />
+                    Hidden Conversations
+                  </h2>
+                  <button
+                    onClick={() => setShowHidden(false)}
+                    className="text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 flex items-center"
+                  >
+                    <span>Back to Messages</span>
+                  </button>
                 </div>
-                <h2 className="text-xl font-semibold text-gray-800 dark:text-gray-200 mb-2">No messages yet</h2>
-                <p className="text-gray-600 dark:text-gray-400 mb-6">Start connecting with potential roommates!</p>
+                {hiddenConversations.length === 0 ? (
+                  <div className="bg-white dark:bg-gray-800 rounded-xl p-8 text-center border border-gray-100 dark:border-gray-700 shadow-sm">
+                    <div className="flex justify-center mb-4">
+                      <div className="w-16 h-16 rounded-full bg-gray-100 dark:bg-gray-700 flex items-center justify-center">
+                        <FiEyeOff className="h-8 w-8 text-gray-400 dark:text-gray-500" />
+                      </div>
+                    </div>
+                    <h2 className="text-xl font-semibold text-gray-800 dark:text-gray-200 mb-2">No hidden conversations</h2>
+                    <p className="text-gray-600 dark:text-gray-400">Hidden conversations will appear here</p>
+                  </div>
+                ) : (
+                  hiddenConversations.map((conversation) => (
+                    <ConversationItem
+                      key={conversation._id}
+                      conversation={conversation}
+                      isHidden={true}
+                    />
+                  ))
+                )}
               </div>
             ) : (
-              conversations.map((conversation) => (
-                <ConversationItem
-                  key={conversation._id}
-                  conversation={conversation}
-                />
-              ))
+              // Active conversations
+              conversations.length === 0 ? (
+                <div className="bg-white dark:bg-gray-800 rounded-xl p-8 text-center border border-gray-100 dark:border-gray-700 shadow-sm">
+                  <div className="flex justify-center mb-4">
+                    <div className="w-16 h-16 rounded-full bg-gray-100 dark:bg-gray-700 flex items-center justify-center">
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 text-gray-400 dark:text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                      </svg>
+                    </div>
+                  </div>
+                  <h2 className="text-xl font-semibold text-gray-800 dark:text-gray-200 mb-2">No messages yet</h2>
+                  <p className="text-gray-600 dark:text-gray-400 mb-6">Start connecting with potential roommates!</p>
+                </div>
+              ) : (
+                conversations.map((conversation) => (
+                  <ConversationItem
+                    key={conversation._id}
+                    conversation={conversation}
+                    isHidden={false}
+                  />
+                ))
+              )
             )}
           </div>
         </div>
       </div>
+
+      {/* Hidden Conversations Corner Button - Only show if there are hidden conversations */}
+      {hiddenConversations.length > 0 && !showHidden && (
+        <button
+          onClick={() => setShowHidden(true)}
+          className="fixed bottom-6 right-6 bg-gray-800 dark:bg-gray-700 text-white p-3 rounded-full shadow-lg hover:bg-gray-700 dark:hover:bg-gray-600 transition-all duration-200 hover:scale-105 z-40"
+          title="View hidden conversations"
+        >
+          <FiEyeOff className="w-5 h-5" />
+        </button>
+      )}
+
+      {/* Hide Confirmation Modal */}
+      {showHideConfirmModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white dark:bg-gray-800 rounded-lg p-6 w-full max-w-md">
+            <div className="flex items-center mb-4">
+              <FiEyeOff className="h-6 w-6 text-red-500 mr-3" />
+              <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+                Hide Conversation
+              </h3>
+            </div>
+            <p className="text-gray-600 dark:text-gray-400 mb-6">
+              Are you sure you want to hide this conversation? You can access it later from the hidden conversations button.
+            </p>
+            <div className="flex space-x-3 justify-end">
+              <button
+                onClick={() => {
+                  setShowHideConfirmModal(false);
+                  setConversationToHide(null);
+                }}
+                className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-md transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmHideConversation}
+                disabled={hidingId !== null}
+                className="px-4 py-2 text-sm font-medium text-white bg-red-600 hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed rounded-md transition-colors"
+              >
+                {hidingId ? 'Hiding...' : 'Hide Conversation'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {showDeleteConfirmModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white dark:bg-gray-800 rounded-lg p-6 w-full max-w-md">
+            <div className="flex items-center mb-4">
+              <FiTrash2 className="h-6 w-6 text-red-500 mr-3" />
+              <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+                Delete Conversation
+              </h3>
+            </div>
+            <p className="text-gray-600 dark:text-gray-400 mb-6">
+              Are you sure you want to delete this conversation? This will permanently remove it from your view and cannot be undone. Other participants will not be affected.
+            </p>
+            <div className="flex space-x-3 justify-end">
+              <button
+                onClick={() => {
+                  setShowDeleteConfirmModal(false);
+                  setConversationToDelete(null);
+                }}
+                className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-md transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmDeleteConversation}
+                disabled={deletingId !== null}
+                className="px-4 py-2 text-sm font-medium text-white bg-red-600 hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed rounded-md transition-colors"
+              >
+                {deletingId ? 'Deleting...' : 'Delete Conversation'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   );
 } 

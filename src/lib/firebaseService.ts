@@ -28,6 +28,8 @@ export interface FirebaseConversation {
   lastMessage?: string | FirebaseMessage;
   name?: string | null;
   isGroup?: boolean;
+  hiddenBy?: string[]; // Array of user emails who have hidden this conversation
+  deletedBy?: string[]; // Array of user emails who have deleted this conversation from their view
   createdAt?: any;
   updatedAt?: any;
 }
@@ -250,6 +252,92 @@ export const deleteConversation = async (conversationId: string) => {
   batch.delete(conversationRef);
   
   await batch.commit();
+};
+
+export const hideConversation = async (conversationId: string, userEmail: string) => {
+  const conversationRef = adminDb.collection('conversations').doc(conversationId);
+  const conversationDoc = await conversationRef.get();
+  
+  if (!conversationDoc.exists) {
+    throw new Error('Conversation not found');
+  }
+  
+  const conversation = conversationDoc.data() as FirebaseConversation;
+  const hiddenBy = conversation.hiddenBy || [];
+  
+  // Add user to hiddenBy array if not already present
+  if (!hiddenBy.includes(userEmail)) {
+    hiddenBy.push(userEmail);
+    await conversationRef.update({
+      hiddenBy,
+      updatedAt: new Date()
+    });
+  }
+  
+  return {
+    _id: conversationId,
+    ...conversation,
+    hiddenBy
+  };
+};
+
+export const unhideConversation = async (conversationId: string, userEmail: string) => {
+  const conversationRef = adminDb.collection('conversations').doc(conversationId);
+  const conversationDoc = await conversationRef.get();
+  
+  if (!conversationDoc.exists) {
+    throw new Error('Conversation not found');
+  }
+  
+  const conversation = conversationDoc.data() as FirebaseConversation;
+  const hiddenBy = conversation.hiddenBy || [];
+  
+  // Remove user from hiddenBy array
+  const updatedHiddenBy = hiddenBy.filter(email => email !== userEmail);
+  await conversationRef.update({
+    hiddenBy: updatedHiddenBy,
+    updatedAt: new Date()
+  });
+  
+  return {
+    _id: conversationId,
+    ...conversation,
+    hiddenBy: updatedHiddenBy
+  };
+};
+
+export const deleteConversationForUser = async (conversationId: string, userEmail: string) => {
+  const conversationRef = adminDb.collection('conversations').doc(conversationId);
+  const conversationDoc = await conversationRef.get();
+  
+  if (!conversationDoc.exists) {
+    throw new Error('Conversation not found');
+  }
+  
+  const conversation = conversationDoc.data() as FirebaseConversation;
+  const deletedBy = conversation.deletedBy || [];
+  
+  // Add user to deletedBy array if not already present
+  if (!deletedBy.includes(userEmail)) {
+    deletedBy.push(userEmail);
+    
+    // Also remove from hiddenBy if present (since deleting supersedes hiding)
+    const hiddenBy = conversation.hiddenBy || [];
+    const updatedHiddenBy = hiddenBy.filter(email => email !== userEmail);
+    
+    await conversationRef.update({
+      deletedBy,
+      hiddenBy: updatedHiddenBy,
+      updatedAt: new Date()
+    });
+  }
+  
+  return {
+    _id: conversationId,
+    ...conversation,
+    deletedBy,
+    hiddenBy: conversation.hiddenBy?.filter(email => email !== userEmail) || []
+  };
 };
 
 // Message Methods
