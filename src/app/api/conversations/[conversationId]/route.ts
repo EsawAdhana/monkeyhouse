@@ -5,8 +5,7 @@ import {
   updateConversation,
   deleteConversation,
   hideConversation,
-  unhideConversation,
-  deleteConversationForUser
+  unhideConversation
 } from '@/lib/firebaseService';
 
 export async function GET(
@@ -131,8 +130,8 @@ export async function PATCH(
     
     const { action } = await req.json();
     
-    if (!action || !['hide', 'unhide', 'delete'].includes(action)) {
-      return NextResponse.json({ error: 'Valid action is required (hide, unhide, or delete)' }, { status: 400 });
+    if (!action || !['hide', 'unhide'].includes(action)) {
+      return NextResponse.json({ error: 'Valid action is required (hide or unhide)' }, { status: 400 });
     }
     
     // Get conversation to check permissions
@@ -151,14 +150,12 @@ export async function PATCH(
       return NextResponse.json({ error: 'Access denied' }, { status: 403 });
     }
     
-    // Hide, unhide, or delete conversation
+    // Hide or unhide conversation
     let updatedConversation;
     if (action === 'hide') {
       updatedConversation = await hideConversation(conversationId, userEmail);
-    } else if (action === 'unhide') {
+    } else {
       updatedConversation = await unhideConversation(conversationId, userEmail);
-    } else if (action === 'delete') {
-      updatedConversation = await deleteConversationForUser(conversationId, userEmail);
     }
 
     return NextResponse.json({ success: true, data: updatedConversation });

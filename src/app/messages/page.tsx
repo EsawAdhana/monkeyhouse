@@ -5,7 +5,7 @@ import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import Image from 'next/image';
-import { FiUsers, FiEye, FiEyeOff, FiTrash2 } from 'react-icons/fi';
+import { FiUsers, FiEye, FiEyeOff } from 'react-icons/fi';
 import { useNotifications } from '@/contexts/NotificationContext';
 import { ConversationBadge } from '@/components/NotificationBadge';
 import LayeredAvatars from '@/components/LayeredAvatars';
@@ -28,7 +28,6 @@ interface Conversation {
   name: string;
   updatedAt: string;
   hiddenBy?: string[];
-  deletedBy?: string[];
 }
 
 // Helper function to compare two conversations for equality
@@ -68,8 +67,6 @@ export default function MessagesPage() {
   const [showHideConfirmModal, setShowHideConfirmModal] = useState(false);
   const [conversationToHide, setConversationToHide] = useState<string | null>(null);
   const [hidingId, setHidingId] = useState<string | null>(null);
-  const [showDeleteConfirmModal, setShowDeleteConfirmModal] = useState(false);
-  const [conversationToDelete, setConversationToDelete] = useState<string | null>(null);
   const searchTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   // Notification hooks - now also getting conversations from the same source
@@ -121,7 +118,6 @@ export default function MessagesPage() {
         isGroup: conv.isGroup || false,
         name: conv.name || '',
         hiddenBy: conv.hiddenBy || [],
-        deletedBy: conv.deletedBy || [],
         updatedAt: (() => {
           if (!conv.updatedAt) return new Date().toISOString();
           // Handle Firebase Timestamp
@@ -148,17 +144,12 @@ export default function MessagesPage() {
         return;
       }
       
-      // Filter out conversations deleted by the current user
-      const nonDeletedConversations = transformedConversations.filter((conv: Conversation) => {
-        return !conv.deletedBy.includes(userEmail);
-      });
-      
-      // Separate visible and hidden conversations from non-deleted ones
-      const visibleConversations = nonDeletedConversations.filter((conv: Conversation) => {
+      // Separate visible and hidden conversations
+      const visibleConversations = transformedConversations.filter((conv: Conversation) => {
         return !conv.hiddenBy.includes(userEmail);
       });
       
-      const hiddenConversationsData = nonDeletedConversations.filter((conv: Conversation) => {
+      const hiddenConversationsData = transformedConversations.filter((conv: Conversation) => {
         return conv.hiddenBy.includes(userEmail);
       });
       
@@ -460,39 +451,22 @@ export default function MessagesPage() {
               )}
             </button>
           ) : (
-            <div className="absolute top-2 right-2 z-20 flex flex-col space-y-1">
-              {/* Unhide button */}
-              <button
-                onClick={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  unhideConversation(conversationId);
-                }}
-                disabled={hidingId === conversationId}
-                className="p-2 rounded-full hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
-                title="Unhide conversation"
-              >
-                {hidingId === conversationId ? (
-                  <div className="animate-spin w-4 h-4 border-2 border-current border-t-transparent rounded-full" />
-                ) : (
-                  <FiEye className="w-4 h-4" />
-                )}
-              </button>
-              
-              {/* Delete button */}
-              <button
-                onClick={(e) => handleDeleteClick(e, conversationId)}
-                disabled={deletingId === conversationId}
-                className="p-2 rounded-full hover:bg-red-100 dark:hover:bg-red-900/30 text-gray-500 dark:text-gray-400 hover:text-red-600 dark:hover:text-red-400"
-                title="Delete conversation"
-              >
-                {deletingId === conversationId ? (
-                  <div className="animate-spin w-4 h-4 border-2 border-current border-t-transparent rounded-full" />
-                ) : (
-                  <FiTrash2 className="w-4 h-4" />
-                )}
-              </button>
-            </div>
+            <button
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                unhideConversation(conversationId);
+              }}
+              disabled={hidingId === conversationId}
+              className="absolute top-2 right-2 z-20 p-2 rounded-full hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
+              title="Unhide conversation"
+            >
+              {hidingId === conversationId ? (
+                <div className="animate-spin w-4 h-4 border-2 border-current border-t-transparent rounded-full" />
+              ) : (
+                <FiEye className="w-4 h-4" />
+              )}
+            </button>
           )}
           
           {/* Clickable overlay */}
@@ -575,35 +549,6 @@ export default function MessagesPage() {
     }
   };
 
-  // Function to delete a conversation for the current user
-  const deleteConversationForUser = async (conversationId: string) => {
-    if (!session?.user?.email) return;
-    
-    setDeletingId(conversationId);
-    try {
-      const response = await fetch(`/api/conversations/${conversationId}`, {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ action: 'delete' }),
-      });
-
-      if (response.ok) {
-        // Real-time updates will automatically filter out the deleted conversation
-        console.log('Conversation deleted successfully');
-      } else {
-        console.error('Failed to delete conversation');
-      }
-    } catch (error) {
-      console.error('Error deleting conversation:', error);
-    } finally {
-      setDeletingId(null);
-      setShowDeleteConfirmModal(false);
-      setConversationToDelete(null);
-    }
-  };
-
   // Function to fetch hidden conversations
   const fetchHiddenConversations = async () => {
     // No longer needed since we get real-time updates for hidden conversations
@@ -622,20 +567,6 @@ export default function MessagesPage() {
   const confirmHideConversation = () => {
     if (conversationToHide) {
       hideConversation(conversationToHide);
-    }
-  };
-
-  // Handle delete conversation confirmation
-  const handleDeleteClick = (e: React.MouseEvent, conversationId: string) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setConversationToDelete(conversationId);
-    setShowDeleteConfirmModal(true);
-  };
-
-  const confirmDeleteConversation = () => {
-    if (conversationToDelete) {
-      deleteConversationForUser(conversationToDelete);
     }
   };
 
@@ -787,41 +718,6 @@ export default function MessagesPage() {
                 className="px-4 py-2 text-sm font-medium text-white bg-red-600 hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed rounded-md transition-colors"
               >
                 {hidingId ? 'Hiding...' : 'Hide Conversation'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Delete Confirmation Modal */}
-      {showDeleteConfirmModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white dark:bg-gray-800 rounded-lg p-6 w-full max-w-md">
-            <div className="flex items-center mb-4">
-              <FiTrash2 className="h-6 w-6 text-red-500 mr-3" />
-              <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
-                Delete Conversation
-              </h3>
-            </div>
-            <p className="text-gray-600 dark:text-gray-400 mb-6">
-              Are you sure you want to delete this conversation? This will permanently remove it from your view and cannot be undone. Other participants will not be affected.
-            </p>
-            <div className="flex space-x-3 justify-end">
-              <button
-                onClick={() => {
-                  setShowDeleteConfirmModal(false);
-                  setConversationToDelete(null);
-                }}
-                className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-md transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={confirmDeleteConversation}
-                disabled={deletingId !== null}
-                className="px-4 py-2 text-sm font-medium text-white bg-red-600 hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed rounded-md transition-colors"
-              >
-                {deletingId ? 'Deleting...' : 'Delete Conversation'}
               </button>
             </div>
           </div>
