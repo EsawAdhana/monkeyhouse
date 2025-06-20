@@ -413,7 +413,7 @@ export default function DashboardPage() {
               <h2 className="text-xl font-semibold text-white flex items-center">
                 <FiUsers className="mr-2" /> Compatible Roommates
               </h2>
-              {surveyData?.isSubmitted && (
+              {surveyData?.isSubmitted && session?.user?.email === 'adhanaesaw@gmail.com' && (
                 <div className="flex items-center">
                   <label className="flex items-center cursor-pointer">
                     <div className="relative">

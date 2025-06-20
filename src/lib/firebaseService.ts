@@ -1,6 +1,7 @@
 import { adminDb } from './firebase-admin';
 import { User } from 'next-auth';
 import { getRecommendedMatches } from '@/utils/recommendationEngine';
+import { encryptMessage, safeDecryptMessage, EncryptedData } from './encryption';
 
 // Firebase data interfaces
 export interface FirebaseUser {
@@ -14,7 +15,7 @@ export interface FirebaseUser {
 
 export interface FirebaseMessage {
   _id?: string;
-  content: string;
+  content: string | EncryptedData; // Can be plain text (legacy) or encrypted data
   senderId: string | FirebaseUser | { _id: string; name?: string; image?: string; };
   conversationId: string;
   readBy?: Array<string | FirebaseUser | { _id: string; name?: string; image?: string; }>;
@@ -212,10 +213,20 @@ export const getConversationsByUser = async (userEmail: string) => {
   const conversations: FirebaseConversation[] = [];
   
   querySnapshot.forEach((doc) => {
+    const conversationData = doc.data() as FirebaseConversation;
+    
+    // Decrypt lastMessage content if it exists
+    if (conversationData.lastMessage && typeof conversationData.lastMessage === 'object') {
+      const lastMessage = conversationData.lastMessage as FirebaseMessage;
+      if (lastMessage.content) {
+        lastMessage.content = safeDecryptMessage(lastMessage.content);
+      }
+    }
+    
     conversations.push({
       _id: doc.id,
-      ...doc.data()
-    } as FirebaseConversation);
+      ...conversationData
+    });
   });
   
   return conversations;
@@ -308,20 +319,33 @@ export const unhideConversation = async (conversationId: string, userEmail: stri
 // Message Methods
 export const createMessage = async (message: Omit<FirebaseMessage, '_id' | 'createdAt' | 'updatedAt'>) => {
   const now = new Date();
+  
+  // Encrypt the message content before storing
+  const encryptedContent = typeof message.content === 'string' 
+    ? encryptMessage(message.content)
+    : message.content;
+  
   const messageData = {
     ...message,
+    content: encryptedContent,
     createdAt: now,
     updatedAt: now
   };
   
   const docRef = await adminDb.collection('messages').add(messageData);
   
+  // For the lastMessage in conversation, we'll also store it encrypted for full encryption
+  const lastMessageForConversation = {
+    _id: docRef.id,
+    content: encryptedContent, // Store encrypted content in conversation too
+    senderId: message.senderId,
+    conversationId: message.conversationId,
+    createdAt: now
+  };
+  
   // Update the conversation's lastMessage and updatedAt
   await updateConversation(message.conversationId, {
-    lastMessage: {
-      _id: docRef.id,
-      ...messageData
-    },
+    lastMessage: lastMessageForConversation,
     updatedAt: now
   });
   
@@ -346,7 +370,7 @@ export const getMessagesByConversation = async (conversationId: string) => {
     } as FirebaseMessage);
   });
   
-  // Enrich messages with user data
+  // Enrich messages with user data and decrypt content
   const enrichedMessages = await Promise.all(messages.map(async (message) => {
     let enrichedSenderId = message.senderId;
     
@@ -372,8 +396,12 @@ export const getMessagesByConversation = async (conversationId: string) => {
       }
     }
     
+    // Decrypt message content
+    const decryptedContent = safeDecryptMessage(message.content);
+    
     return {
       ...message,
+      content: decryptedContent,
       senderId: enrichedSenderId
     };
   }));

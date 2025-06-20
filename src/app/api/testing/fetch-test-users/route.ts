@@ -1,16 +1,9 @@
 import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
-import { 
-  db, 
-  collection, 
-  getDocs 
-} from '@/lib/firebase';
+import { adminDb } from '@/lib/firebase-admin';
 
 // Only for development
 const ENABLE_TEST_ENDPOINT = process.env.NODE_ENV !== 'production';
-
-// Define Firestore collection reference
-const testSurveysCollection = collection(db, 'test_surveys');
 
 export async function GET() {
   // Check if test endpoint is enabled
@@ -32,8 +25,9 @@ export async function GET() {
       );
     }
     
-    // Get all test users from Firestore
-    const usersSnapshot = await getDocs(testSurveysCollection);
+    // Get all test users from Firestore using admin SDK
+    const testSurveysCollection = adminDb.collection('test_surveys');
+    const usersSnapshot = await testSurveysCollection.get();
     
     // Format the users for the frontend
     const formattedUsers = usersSnapshot.docs.map(doc => {

@@ -1,11 +1,5 @@
 import { NextResponse } from 'next/server';
-import { 
-  db, 
-  collection, 
-  getDocs,
-  query, 
-  limit 
-} from '@/lib/firebase';
+import { adminDb } from '@/lib/firebase-admin';
 
 // Only for development
 const ENABLE_TEST_ENDPOINT = process.env.NODE_ENV !== 'production';
@@ -16,39 +10,30 @@ export async function GET() {
   }
   
   try {
-    // Define collection references
-    const surveysCollection = collection(db, 'surveys');
-    const testSurveysCollection = collection(db, 'test_surveys');
-    const usersCollection = collection(db, 'users');
-    const conversationsCollection = collection(db, 'conversations');
-    const messagesCollection = collection(db, 'messages');
-    const reportsCollection = collection(db, 'reports');
-    const blocksCollection = collection(db, 'blocks');
-    const bannedUsersCollection = collection(db, 'banned_users');
-    
-    // Check if collections exist by trying to get one document from each
+    // Check collections using admin SDK
     const collectionsStatus = {};
     const collectionCounts = {};
     
     const collections = [
-      { name: 'surveys', ref: surveysCollection },
-      { name: 'test_surveys', ref: testSurveysCollection },
-      { name: 'users', ref: usersCollection },
-      { name: 'conversations', ref: conversationsCollection },
-      { name: 'messages', ref: messagesCollection },
-      { name: 'reports', ref: reportsCollection },
-      { name: 'blocks', ref: blocksCollection },
-      { name: 'banned_users', ref: bannedUsersCollection }
+      { name: 'surveys' },
+      { name: 'test_surveys' },
+      { name: 'users' },
+      { name: 'conversations' },
+      { name: 'messages' },
+      { name: 'reports' },
+      { name: 'blocks' },
+      { name: 'banned_users' }
     ];
     
     // Check each collection
     for (const col of collections) {
       try {
-        const querySnapshot = await getDocs(query(col.ref, limit(1)));
+        const colRef = adminDb.collection(col.name);
+        const querySnapshot = await colRef.limit(1).get();
         collectionsStatus[col.name] = true;
         
         // Count documents in each collection
-        const countSnapshot = await getDocs(col.ref);
+        const countSnapshot = await colRef.get();
         collectionCounts[col.name] = countSnapshot.size;
       } catch (error) {
         console.error(`Error checking collection ${col.name}:`, error);

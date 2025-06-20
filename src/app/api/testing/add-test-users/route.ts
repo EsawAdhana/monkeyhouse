@@ -1,22 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { HOUSING_REGIONS, NON_NEGOTIABLES, Preference, PreferenceStrength } from '@/constants/survey-constants';
-import { 
-  db, 
-  collection, 
-  getDocs, 
-  addDoc, 
-  doc, 
-  setDoc, 
-  Timestamp 
-} from '@/lib/firebase';
+import { adminDb } from '@/lib/firebase-admin';
 
 // This endpoint is for testing purposes only
 // Should be disabled in production
 const ENABLE_TEST_ENDPOINT = process.env.NODE_ENV !== 'production';
-
-// Define Firestore collection reference
-const testSurveysCollection = collection(db, 'test_surveys');
 
 // Names for generating test users
 const FIRST_NAMES = [
@@ -273,8 +262,8 @@ function generateTestUser(index: number, existingCount: number = 0): any {
     userEmail: email,  // Store email in both fields for compatibility
     firstName,  // Store first name separately for search
     lastName,  // Store last name separately for search
-    createdAt: Timestamp.now(),
-    updatedAt: Timestamp.now()
+    createdAt: new Date(),
+    updatedAt: new Date()
   };
 }
 
@@ -328,8 +317,9 @@ export async function POST(req: NextRequest) {
     // Limit count to a reasonable number
     const userCount = Math.min(Math.max(1, count), 50);
     
-    // Count existing test users in Firestore
-    const existingSnapshot = await getDocs(testSurveysCollection);
+    // Count existing test users in Firestore using admin SDK
+    const testSurveysCollection = adminDb.collection('test_surveys');
+    const existingSnapshot = await testSurveysCollection.get();
     const existingCount = existingSnapshot.size;
     
     // Generate and save test users
@@ -344,8 +334,8 @@ export async function POST(req: NextRequest) {
       const email = testUser.email;
       
       try {
-        // Add to test_surveys collection
-        await setDoc(doc(testSurveysCollection, email), testUser);
+        // Add to test_surveys collection using admin SDK
+        await testSurveysCollection.doc(email).set(testUser);
         addedUsers.push(testUser);
       } catch (error) {
         console.error(`Error adding test user ${email}:`, error);

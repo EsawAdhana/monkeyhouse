@@ -3,22 +3,11 @@ import { getServerSession } from 'next-auth';
 import { calculateCompatibilityScore, calculateEnhancedCompatibilityScore } from '@/utils/recommendationEngine';
 import { SurveyFormData } from '@/constants/survey-constants';
 import { ExtendedSurveyData } from '@/types/survey';
-import { 
-  db, 
-  collection, 
-  query, 
-  where, 
-  getDocs, 
-  doc, 
-  getDoc 
-} from '@/lib/firebase';
+import { adminDb } from '@/lib/firebase-admin';
 
 // This endpoint is for testing purposes only
 // Should be disabled in production
 const ENABLE_TEST_ENDPOINT = process.env.NODE_ENV !== 'production';
-
-// Define Firestore collection references
-const testSurveysCollection = collection(db, 'test_surveys');
 
 // Convert Firestore document to SurveyFormData
 function documentToSurveyData(docData: any): ExtendedSurveyData {
@@ -78,34 +67,29 @@ export async function GET(req: NextRequest) {
       );
     }
     
-    // First try direct document lookup by email
-    let user1Doc = await getDoc(doc(testSurveysCollection, email1));
-    let user2Doc = await getDoc(doc(testSurveysCollection, email2));
+    // First try direct document lookup by email using admin SDK
+    const testSurveysCollection = adminDb.collection('test_surveys');
+    let user1Doc = await testSurveysCollection.doc(email1).get();
+    let user2Doc = await testSurveysCollection.doc(email2).get();
     
     // If not found, try query by userEmail or email field
-    if (!user1Doc.exists()) {
-      const user1Query = query(
-        testSurveysCollection,
-        where('userEmail', '==', email1)
-      );
-      const user1Snapshot = await getDocs(user1Query);
+    if (!user1Doc.exists) {
+      const user1Query = testSurveysCollection.where('userEmail', '==', email1);
+      const user1Snapshot = await user1Query.get();
       if (!user1Snapshot.empty) {
         user1Doc = user1Snapshot.docs[0];
       }
     }
     
-    if (!user2Doc.exists()) {
-      const user2Query = query(
-        testSurveysCollection,
-        where('userEmail', '==', email2)
-      );
-      const user2Snapshot = await getDocs(user2Query);
+    if (!user2Doc.exists) {
+      const user2Query = testSurveysCollection.where('userEmail', '==', email2);
+      const user2Snapshot = await user2Query.get();
       if (!user2Snapshot.empty) {
         user2Doc = user2Snapshot.docs[0];
       }
     }
     
-    if (!user1Doc.exists() || !user2Doc.exists()) {
+    if (!user1Doc.exists || !user2Doc.exists) {
       return NextResponse.json(
         { error: 'One or both users not found' },
         { status: 404 }

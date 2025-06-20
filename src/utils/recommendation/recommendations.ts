@@ -47,7 +47,7 @@ export async function getRecommendedMatches(
     // Test surveys for specific emails (if showTestUsers is true)
     let testSurveys: any[] = [];
     if (showTestUsers) {
-      const testSurveysSnapshot = await adminDb.collection('test-surveys')
+      const testSurveysSnapshot = await adminDb.collection('test_surveys')
         .where('isSubmitted', '==', true)
         .where('userEmail', 'in', filterEmails)
         .get();
@@ -68,7 +68,7 @@ export async function getRecommendedMatches(
     // Test surveys (if showTestUsers is true)
     let testSurveys: any[] = [];
     if (showTestUsers) {
-      const testSurveysSnapshot = await adminDb.collection('test-surveys')
+      const testSurveysSnapshot = await adminDb.collection('test_surveys')
         .where('isSubmitted', '==', true)
         .get();
       testSurveys = testSurveysSnapshot.docs.filter(
@@ -150,7 +150,7 @@ export async function getTopMatchesByRegion(
     // Get test surveys in the specified region if showTestUsers is true
     let testSurveys: any[] = [];
     if (showTestUsers) {
-      const testSurveysSnapshot = await adminDb.collection('test-surveys')
+      const testSurveysSnapshot = await adminDb.collection('test_surveys')
         .where('isSubmitted', '==', true)
         .where('housingRegion', '==', region)
         .get();

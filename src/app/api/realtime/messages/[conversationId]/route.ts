@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { adminDb } from '@/lib/firebase-admin';
+import { safeDecryptMessage } from '@/lib/encryption';
 
 // Helper function to get user data from Firebase
 async function getUserData(userEmail: string) {
@@ -97,8 +98,12 @@ async function populateMessageSenders(messages: any[]) {
       return reader;
     });
     
+    // Decrypt message content
+    const decryptedContent = safeDecryptMessage(msg.content);
+    
     return {
       ...msg,
+      content: decryptedContent,
       senderId: senderData,
       readBy: populatedReadBy
     };

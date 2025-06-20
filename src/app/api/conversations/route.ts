@@ -46,6 +46,7 @@ export async function GET(req: Request) {
           image: p.image || ''
         }));
       
+      // The lastMessage content is already decrypted by getConversationsByUser
       return {
         _id: conv._id,
         participants: enrichedParticipants,

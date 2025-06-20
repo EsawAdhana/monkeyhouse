@@ -1,10 +1,70 @@
-[debug] [2025-06-14T04:00:42.062Z] ----------------------------------------------------------------------
-[debug] [2025-06-14T04:00:42.064Z] Command:       /opt/homebrew/Cellar/node/23.10.0_1/bin/node /opt/homebrew/bin/firebase init firestore --project "monkeyhouse-e2529",
-[debug] [2025-06-14T04:00:42.065Z] CLI Version:   14.3.1
-[debug] [2025-06-14T04:00:42.065Z] Platform:      darwin
-[debug] [2025-06-14T04:00:42.065Z] Node Version:  v23.10.0
-[debug] [2025-06-14T04:00:42.065Z] Time:          Fri Jun 13 2025 21:00:42 GMT-0700 (Pacific Daylight Time)
-[debug] [2025-06-14T04:00:42.065Z] ----------------------------------------------------------------------
+[debug] [2025-06-19T18:13:05.907Z] ----------------------------------------------------------------------
+[debug] [2025-06-19T18:13:05.909Z] Command:       /opt/homebrew/Cellar/node/23.10.0_1/bin/node /opt/homebrew/bin/firebase init firestore --project monkeyhouse-e2529
+[debug] [2025-06-19T18:13:05.909Z] CLI Version:   14.3.1
+[debug] [2025-06-19T18:13:05.909Z] Platform:      darwin
+[debug] [2025-06-19T18:13:05.910Z] Node Version:  v23.10.0
+[debug] [2025-06-19T18:13:05.910Z] Time:          Thu Jun 19 2025 11:13:05 GMT-0700 (Pacific Daylight Time)
+[debug] [2025-06-19T18:13:05.910Z] ----------------------------------------------------------------------
 [debug] 
-[error] 
-[error] Error: Invalid project id: "monkeyhouse-e2529",.
+[debug] [2025-06-19T18:13:05.914Z] > command requires scopes: ["email","openid","https://www.googleapis.com/auth/cloudplatformprojects.readonly","https://www.googleapis.com/auth/firebase","https://www.googleapis.com/auth/cloud-platform"]
+[debug] [2025-06-19T18:13:05.914Z] > authorizing via signed-in user (adhanaesaw@gmail.com)
+[info] 
+     ######## #### ########  ######## ########     ###     ######  ########
+     ##        ##  ##     ## ##       ##     ##  ##   ##  ##       ##
+     ######    ##  ########  ######   ########  #########  ######  ######
+     ##        ##  ##    ##  ##       ##     ## ##     ##       ## ##
+     ##       #### ##     ## ######## ########  ##     ##  ######  ########
+
+You're about to initialize a Firebase project in this directory:
+
+  /Users/esawadhana/MH
+
+[info] 
+=== Project Setup
+[info] 
+[info] First, let's associate this project directory with a Firebase project.
+[info] You can create multiple project aliases by running firebase use --add, 
+[info] but for now we'll just set up a default project.
+[info] 
+[debug] [2025-06-19T18:13:05.916Z] Using project from CLI flag: monkeyhouse-e2529
+[debug] [2025-06-19T18:13:05.916Z] Checked if tokens are valid: false, expires at: 1747615169058
+[debug] [2025-06-19T18:13:05.916Z] Checked if tokens are valid: false, expires at: 1747615169058
+[debug] [2025-06-19T18:13:05.916Z] > refreshing access token with scopes: []
+[debug] [2025-06-19T18:13:05.917Z] >>> [apiv2][query] POST https://www.googleapis.com/oauth2/v3/token [none]
+[debug] [2025-06-19T18:13:05.917Z] >>> [apiv2][body] POST https://www.googleapis.com/oauth2/v3/token [omitted]
+[debug] [2025-06-19T18:13:06.046Z] <<< [apiv2][status] POST https://www.googleapis.com/oauth2/v3/token 200
+[debug] [2025-06-19T18:13:06.046Z] <<< [apiv2][body] POST https://www.googleapis.com/oauth2/v3/token [omitted]
+[debug] [2025-06-19T18:13:06.063Z] >>> [apiv2][query] GET https://firebase.googleapis.com/v1beta1/projects/monkeyhouse-e2529 [none]
+[debug] [2025-06-19T18:13:06.301Z] <<< [apiv2][status] GET https://firebase.googleapis.com/v1beta1/projects/monkeyhouse-e2529 200
+[debug] [2025-06-19T18:13:06.302Z] <<< [apiv2][body] GET https://firebase.googleapis.com/v1beta1/projects/monkeyhouse-e2529 {"projectId":"monkeyhouse-e2529","projectNumber":"489367444710","displayName":"MonkeyHouse","name":"projects/monkeyhouse-e2529","resources":{"hostingSite":"monkeyhouse-e2529"},"state":"ACTIVE","etag":"1_d0008190-6015-4066-9ca7-3f5fdadd9bd4"}
+[info] i  Using project monkeyhouse-e2529 (MonkeyHouse) 
+[info] 
+=== Firestore Setup
+[debug] [2025-06-19T18:13:06.309Z] Checked if tokens are valid: true, expires at: 1750360385046
+[debug] [2025-06-19T18:13:06.309Z] Checked if tokens are valid: true, expires at: 1750360385046
+[debug] [2025-06-19T18:13:06.309Z] >>> [apiv2][query] GET https://serviceusage.googleapis.com/v1/projects/monkeyhouse-e2529/services/firestore.googleapis.com [none]
+[debug] [2025-06-19T18:13:06.309Z] >>> [apiv2][(partial)header] GET https://serviceusage.googleapis.com/v1/projects/monkeyhouse-e2529/services/firestore.googleapis.com x-goog-quota-user=projects/monkeyhouse-e2529
+[debug] [2025-06-19T18:13:06.859Z] <<< [apiv2][status] GET https://serviceusage.googleapis.com/v1/projects/monkeyhouse-e2529/services/firestore.googleapis.com 200
+[debug] [2025-06-19T18:13:06.859Z] <<< [apiv2][body] GET https://serviceusage.googleapis.com/v1/projects/monkeyhouse-e2529/services/firestore.googleapis.com [omitted]
+[debug] [2025-06-19T18:13:06.859Z] Checked if tokens are valid: true, expires at: 1750360385046
+[debug] [2025-06-19T18:13:06.859Z] Checked if tokens are valid: true, expires at: 1750360385046
+[debug] [2025-06-19T18:13:06.859Z] >>> [apiv2][query] GET https://firestore.googleapis.com/v1/projects/monkeyhouse-e2529/databases/(default) [none]
+[debug] [2025-06-19T18:13:07.045Z] <<< [apiv2][status] GET https://firestore.googleapis.com/v1/projects/monkeyhouse-e2529/databases/(default) 200
+[debug] [2025-06-19T18:13:07.045Z] <<< [apiv2][body] GET https://firestore.googleapis.com/v1/projects/monkeyhouse-e2529/databases/(default) {"name":"projects/monkeyhouse-e2529/databases/(default)","uid":"1a34c59e-4e62-4934-9299-a9fdc48691e8","createTime":"2025-04-20T16:05:54.632008Z","updateTime":"2025-04-20T16:05:54.632008Z","locationId":"us-west2","type":"FIRESTORE_NATIVE","concurrencyMode":"PESSIMISTIC","versionRetentionPeriod":"3600s","earliestVersionTime":"2025-06-19T17:13:07.049390Z","appEngineIntegrationMode":"DISABLED","keyPrefix":"m","pointInTimeRecoveryEnablement":"POINT_IN_TIME_RECOVERY_DISABLED","deleteProtectionState":"DELETE_PROTECTION_DISABLED","databaseEdition":"STANDARD","freeTier":true,"etag":"IKfjlpSL/o0DMNLPq76Q54wD"}
+[debug] [2025-06-19T18:13:07.045Z] database_type: FIRESTORE_NATIVE
+[debug] [2025-06-19T18:13:07.045Z] database_type: FIRESTORE_NATIVE
+[debug] [2025-06-19T18:13:07.046Z] > command requires scopes: ["email","openid","https://www.googleapis.com/auth/cloudplatformprojects.readonly","https://www.googleapis.com/auth/firebase","https://www.googleapis.com/auth/cloud-platform"]
+[debug] [2025-06-19T18:13:07.046Z] > authorizing via signed-in user (adhanaesaw@gmail.com)
+[debug] [2025-06-19T18:13:07.046Z] [iam] checking project monkeyhouse-e2529 for permissions ["firebase.projects.get"]
+[debug] [2025-06-19T18:13:07.046Z] Checked if tokens are valid: true, expires at: 1750360385046
+[debug] [2025-06-19T18:13:07.046Z] Checked if tokens are valid: true, expires at: 1750360385046
+[debug] [2025-06-19T18:13:07.046Z] >>> [apiv2][query] POST https://cloudresourcemanager.googleapis.com/v1/projects/monkeyhouse-e2529:testIamPermissions [none]
+[debug] [2025-06-19T18:13:07.046Z] >>> [apiv2][(partial)header] POST https://cloudresourcemanager.googleapis.com/v1/projects/monkeyhouse-e2529:testIamPermissions x-goog-quota-user=projects/monkeyhouse-e2529
+[debug] [2025-06-19T18:13:07.046Z] >>> [apiv2][body] POST https://cloudresourcemanager.googleapis.com/v1/projects/monkeyhouse-e2529:testIamPermissions {"permissions":["firebase.projects.get"]}
+[debug] [2025-06-19T18:13:07.159Z] <<< [apiv2][status] POST https://cloudresourcemanager.googleapis.com/v1/projects/monkeyhouse-e2529:testIamPermissions 200
+[debug] [2025-06-19T18:13:07.160Z] <<< [apiv2][body] POST https://cloudresourcemanager.googleapis.com/v1/projects/monkeyhouse-e2529:testIamPermissions {"permissions":["firebase.projects.get"]}
+[info] 
+[info] Firestore Security Rules allow you to define how and when to allow
+[info] requests. You can keep these rules in your project directory
+[info] and publish them with firebase deploy.
+[info] 

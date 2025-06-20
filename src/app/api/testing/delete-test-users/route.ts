@@ -1,22 +1,10 @@
 import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { NextRequest } from 'next/server';
-import { 
-  db, 
-  collection, 
-  getDocs, 
-  query, 
-  where, 
-  deleteDoc, 
-  doc 
-} from '@/lib/firebase';
+import { adminDb } from '@/lib/firebase-admin';
 
 // Only for development
 const ENABLE_TEST_ENDPOINT = process.env.NODE_ENV !== 'production';
-
-// Define Firestore collection references
-const testSurveysCollection = collection(db, 'test_surveys');
-const usersCollection = collection(db, 'users');
 
 export async function DELETE(req: NextRequest) {
   // Check if test endpoint is enabled
@@ -37,8 +25,10 @@ export async function DELETE(req: NextRequest) {
       );
     }
     
-    // Get all test users before deletion to properly clean up references
-    const testUsersSnapshot = await getDocs(testSurveysCollection);
+    // Get all test users before deletion to properly clean up references using admin SDK
+    const testSurveysCollection = adminDb.collection('test_surveys');
+    const usersCollection = adminDb.collection('users');
+    const testUsersSnapshot = await testSurveysCollection.get();
     const testUserEmails = testUsersSnapshot.docs.map(doc => doc.data().userEmail).filter(Boolean);
     
     // Track deletion counts for each collection
@@ -49,9 +39,9 @@ export async function DELETE(req: NextRequest) {
       messages: 0
     };
     
-    // Delete all test surveys
+    // Delete all test surveys using admin SDK
     for (const testUserDoc of testUsersSnapshot.docs) {
-      await deleteDoc(doc(testSurveysCollection, testUserDoc.id));
+      await testUserDoc.ref.delete();
       deletionCounts.surveys++;
     }
     
@@ -61,8 +51,8 @@ export async function DELETE(req: NextRequest) {
       for (const email of testUserEmails) {
         try {
           // In Firestore, we'll assume the document ID in users collection is the email
-          const userDocRef = doc(usersCollection, email);
-          await deleteDoc(userDocRef);
+          const userDocRef = usersCollection.doc(email);
+          await userDocRef.delete();
           deletionCounts.users++;
         } catch (error) {
           console.error(`Error deleting user with email ${email}:`, error);

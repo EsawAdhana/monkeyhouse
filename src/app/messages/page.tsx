@@ -700,7 +700,7 @@ export default function MessagesPage() {
               </h3>
             </div>
             <p className="text-gray-600 dark:text-gray-400 mb-6">
-              Are you sure you want to hide this conversation? You can access it later from the hidden conversations button.
+              Are you sure you want to hide this conversation? You can access it through the eye icon in the corner.
             </p>
             <div className="flex space-x-3 justify-end">
               <button

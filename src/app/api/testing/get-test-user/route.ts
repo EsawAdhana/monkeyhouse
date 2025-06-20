@@ -1,20 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
-import { 
-  db, 
-  collection, 
-  doc, 
-  getDoc 
-} from '@/lib/firebase';
+import { adminDb } from '@/lib/firebase-admin';
 import { SurveyFormData } from '@/constants/survey-constants';
 import { ExtendedSurveyData } from '@/types/survey';
 
 // This endpoint is for testing purposes only
 // Should be disabled in production
 const ENABLE_TEST_ENDPOINT = process.env.NODE_ENV !== 'production';
-
-// Define Firestore collection reference
-const testSurveysCollection = collection(db, 'test_surveys');
 
 // Convert Firestore document to SurveyFormData
 function documentToSurveyData(docData: any): ExtendedSurveyData {
@@ -72,10 +64,11 @@ export async function GET(req: NextRequest) {
       );
     }
     
-    // Get user survey data from Firestore
-    const userDoc = await getDoc(doc(testSurveysCollection, userEmail));
+    // Get user survey data from Firestore using admin SDK
+    const testSurveysCollection = adminDb.collection('test_surveys');
+    const userDoc = await testSurveysCollection.doc(userEmail).get();
     
-    if (!userDoc.exists()) {
+    if (!userDoc.exists) {
       return NextResponse.json(
         { error: 'User not found' },
         { status: 404 }

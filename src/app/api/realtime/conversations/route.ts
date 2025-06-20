@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { adminDb } from '@/lib/firebase-admin';
+import { safeDecryptMessage } from '@/lib/encryption';
 
 // Helper function to get user data from Firebase
 async function getUserData(userEmail: string) {
@@ -77,10 +78,20 @@ async function populateConversationParticipants(conversations: any[], currentUse
     
     const otherParticipants = participants.filter((p: any) => p._id !== currentUserEmail);
     
+    // Decrypt lastMessage content if it exists
+    let lastMessage = conv.lastMessage;
+    if (lastMessage && typeof lastMessage === 'object' && lastMessage.content) {
+      lastMessage = {
+        ...lastMessage,
+        content: safeDecryptMessage(lastMessage.content)
+      };
+    }
+    
     return {
       ...conv,
       participants,
-      otherParticipants
+      otherParticipants,
+      lastMessage
     };
   });
 }

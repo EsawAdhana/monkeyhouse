@@ -3,22 +3,11 @@ import { getServerSession } from 'next-auth';
 import { calculateCompatibilityScore, calculateEnhancedCompatibilityScore } from '@/utils/recommendationEngine';
 import { SurveyFormData } from '@/constants/survey-constants';
 import { ExtendedSurveyData } from '@/types/survey';
-import { 
-  db, 
-  collection, 
-  query, 
-  where, 
-  getDocs, 
-  doc, 
-  getDoc 
-} from '@/lib/firebase';
+import { adminDb } from '@/lib/firebase-admin';
 
 // This endpoint is for testing purposes only
 // Should be disabled in production
 const ENABLE_TEST_ENDPOINT = process.env.NODE_ENV !== 'production';
-
-// Define Firestore collection reference
-const testSurveysCollection = collection(db, 'test_surveys');
 
 // Convert Firestore document to SurveyFormData
 function documentToSurveyData(docData: any): ExtendedSurveyData {
@@ -87,17 +76,15 @@ export async function GET(req: NextRequest) {
       );
     }
     
-    // First try direct document lookup by email
-    let userDoc = await getDoc(doc(testSurveysCollection, centralUserEmail));
+    // First try direct document lookup by email using admin SDK
+    const testSurveysCollection = adminDb.collection('test_surveys');
+    let userDoc = await testSurveysCollection.doc(centralUserEmail).get();
     
     // If not found, try query by userEmail field
-    if (!userDoc.exists()) {
-      const userQuery = query(
-        testSurveysCollection,
-        where('userEmail', '==', centralUserEmail)
-      );
+    if (!userDoc.exists) {
+      const userQuery = testSurveysCollection.where('userEmail', '==', centralUserEmail);
       
-      const userSnapshot = await getDocs(userQuery);
+      const userSnapshot = await userQuery.get();
       if (!userSnapshot.empty) {
         userDoc = userSnapshot.docs[0];
       } else {
@@ -112,12 +99,9 @@ export async function GET(req: NextRequest) {
     const userData = documentToSurveyData(userDoc.data());
     
     // Get all other users
-    const otherUsersQuery = query(
-      testSurveysCollection,
-      where('isSubmitted', '==', true)
-    );
+    const otherUsersQuery = testSurveysCollection.where('isSubmitted', '==', true);
     
-    const otherUsersSnapshot = await getDocs(otherUsersQuery);
+    const otherUsersSnapshot = await otherUsersQuery.get();
     
     // Filter out the central user
     const otherUserDocs = otherUsersSnapshot.docs.filter(doc => {
