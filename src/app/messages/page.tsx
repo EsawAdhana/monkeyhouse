@@ -508,7 +508,7 @@ export default function MessagesPage() {
       if (response.ok) {
         // Real-time updates will automatically handle moving the conversation
         // from visible to hidden list, so we don't need manual state updates
-        console.log('Conversation hidden successfully');
+        // Conversation hidden successfully
       } else {
         console.error('Failed to hide conversation');
       }
@@ -538,7 +538,7 @@ export default function MessagesPage() {
       if (response.ok) {
         // Real-time updates will automatically handle moving the conversation
         // from hidden to visible list, so we don't need manual state updates
-        console.log('Conversation unhidden successfully');
+        // Conversation unhidden successfully
       } else {
         console.error('Failed to unhide conversation');
       }

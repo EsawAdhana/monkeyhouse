@@ -25,9 +25,12 @@ interface FirebaseMessage {
   createdAt?: any;
 }
 
-// Temporary placeholder functions - these should be replaced with API calls
 const getConversation = async (id: string) => {
   const response = await fetch(`/api/conversations/${id}`);
+  if (response.status === 403) {
+    // User is not authorized to access this conversation
+    throw new Error('UNAUTHORIZED_ACCESS');
+  }
   if (!response.ok) throw new Error('Failed to fetch conversation');
   const result = await response.json();
   return result.success ? result.data : null;
@@ -61,6 +64,15 @@ const enrichParticipantsWithUserData = async (participants: any[]) => {
       return {
         _id: '',
         name: 'Unknown User',
+        image: ''
+      };
+    }
+    
+    // Check if this is a deleted user - if so, don't fetch profile data
+    if (participantId.startsWith('deleted_')) {
+      return {
+        _id: participantId,
+        name: 'Deleted User',
         image: ''
       };
     }
@@ -248,6 +260,20 @@ export default function ConversationPage({
       const result = await getConversation(conversationId);
       
       if (result) {
+        // Security check: Verify the current user is a participant in this conversation
+        const currentUserEmail = session?.user?.email;
+        if (currentUserEmail) {
+          const isParticipant = result.participants?.some((p: any) => {
+            const participantId = typeof p === 'string' ? p : p._id || p.email;
+            return participantId === currentUserEmail;
+          });
+          
+          if (!isParticipant) {
+            // User is not a participant in this conversation, redirect to messages
+            router.push('/messages');
+            return;
+          }
+        }
         // Transform Firebase data to match expected format
         const conversationData: Conversation = {
           _id: result._id as string,
@@ -310,14 +336,29 @@ export default function ConversationPage({
         }
       } else {
         console.error('Conversation not found');
+        router.push('/messages');
       }
     } catch (error) {
       console.error('Error fetching conversation:', error);
+      if (error instanceof Error && error.message === 'UNAUTHORIZED_ACCESS') {
+        // User tried to access a conversation they're not part of
+        router.push('/messages');
+      }
     }
   };
 
   // Function to fetch profile data for a specific message sender
   const fetchProfileForMessage = async (messageId: string, senderId: string) => {
+    // Skip deleted users
+    if (senderId.startsWith('deleted_')) {
+      setPendingMessages(prev => {
+        const updated = new Set(prev);
+        updated.delete(messageId);
+        return updated;
+      });
+      return;
+    }
+    
     try {
       // First, try to get the user email from the ID
       const userResponse = await fetch(`/api/users/getEmail?userId=${encodeURIComponent(senderId)}`);
@@ -616,9 +657,14 @@ export default function ConversationPage({
       // Get unique sender IDs
       const uniqueSenderIds = Array.from(new Set(messages.map(message => message.senderId._id)));
       
-      // For each sender, fetch their profile if not current user
+      // For each sender, fetch their profile if not current user and not deleted
       for (const senderId of uniqueSenderIds) {
         if (senderId === session?.user?.id || senderId === session?.user?.email) {
+          continue;
+        }
+        
+        // Skip deleted users
+        if (senderId.startsWith('deleted_')) {
           continue;
         }
         

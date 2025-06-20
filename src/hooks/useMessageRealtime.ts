@@ -46,7 +46,7 @@ export function useGlobalMessageRealtime() {
   useEffect(() => {
     if (!session?.user?.email || conversationIds.length === 0) return;
 
-    console.log('Setting up global message real-time listeners for conversations:', conversationIds);
+          // Setting up global message real-time listeners
 
     // In a production implementation, you might want to create a single endpoint
     // that handles multiple conversations to avoid too many SSE connections

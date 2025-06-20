@@ -13,7 +13,7 @@ export default function SurveyPage() {
   
   // Function to handle successful survey submission
   const handleSurveySuccess = () => {
-    console.log('Survey submitted successfully');
+    // Survey submitted successfully
     // No automatic navigation - let the user click the modal button
   };
   

@@ -29,6 +29,9 @@ interface DebugInfo {
   collections?: string[];
 }
 
+// Allowed admin emails for testing access
+const ALLOWED_TESTING_EMAILS = ['adhanaesaw@gmail.com'];
+
 export default function TestingPage() {
   const { data: session, status } = useSession();
   const router = useRouter();
@@ -101,7 +104,15 @@ export default function TestingPage() {
       return;
     }
     
-    // Fetch test users if authenticated
+    // Check if user has access to testing functionality
+    if (status === 'authenticated') {
+      if (!session?.user?.email || !ALLOWED_TESTING_EMAILS.includes(session.user.email)) {
+        router.push('/dashboard');
+        return;
+      }
+    }
+    
+    // Fetch test users if authenticated and authorized
     if (status === 'authenticated') {
       fetchDebugInfo()
         .then(() => {

@@ -67,7 +67,7 @@ export function useServerRealtime<T>({
       eventSourceRef.current = eventSource;
 
       eventSource.onopen = () => {
-        console.log(`Connected to ${endpoint}`);
+        // Connected to endpoint
         setConnected(true);
         setLoading(false);
         reconnectAttempts.current = 0;
@@ -105,24 +105,27 @@ export function useServerRealtime<T>({
 
       eventSource.onerror = (event) => {
         console.error('EventSource error:', event);
+        console.error('EventSource readyState:', eventSource.readyState);
+        console.error('EventSource URL:', endpoint);
         setConnected(false);
         setLoading(false);
 
-        const error = new Error('Connection to real-time server failed');
+        const error = new Error(`Connection to real-time server failed: ${endpoint}`);
         setError(error);
         onErrorRef.current?.(error);
 
-        // Attempt to reconnect with exponential backoff
-        if (reconnectAttempts.current < maxReconnectAttempts) {
+        // Don't attempt to reconnect for certain errors (like 404, 403, etc.)
+        if (eventSource.readyState === EventSource.CLOSED && 
+            reconnectAttempts.current < maxReconnectAttempts) {
           const delay = Math.pow(2, reconnectAttempts.current) * 1000; // 1s, 2s, 4s, 8s, 16s
-          console.log(`Attempting to reconnect in ${delay}ms (attempt ${reconnectAttempts.current + 1}/${maxReconnectAttempts})`);
+          // Attempting to reconnect
           
           reconnectTimeoutRef.current = setTimeout(() => {
             reconnectAttempts.current++;
             connect();
           }, delay);
         } else {
-          console.error('Max reconnection attempts reached');
+          console.error('Max reconnection attempts reached or connection permanently failed');
         }
       };
 

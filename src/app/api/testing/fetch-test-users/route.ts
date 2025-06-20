@@ -5,6 +5,9 @@ import { adminDb } from '@/lib/firebase-admin';
 // Only for development
 const ENABLE_TEST_ENDPOINT = process.env.NODE_ENV !== 'production';
 
+// Allowed admin emails for testing access
+const ALLOWED_TESTING_EMAILS = ['adhanaesaw@gmail.com'];
+
 export async function GET() {
   // Check if test endpoint is enabled
   if (!ENABLE_TEST_ENDPOINT) {
@@ -22,6 +25,13 @@ export async function GET() {
       return NextResponse.json(
         { error: 'Unauthorized' },
         { status: 401 }
+      );
+    }
+
+    if (!ALLOWED_TESTING_EMAILS.includes(session.user.email)) {
+      return NextResponse.json(
+        { error: 'Access denied - insufficient permissions' },
+        { status: 403 }
       );
     }
     

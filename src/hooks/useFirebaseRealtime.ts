@@ -95,7 +95,7 @@ export function useFirebaseRealtime<T>({
 
   const refresh = useCallback(() => {
     // For server-side realtime, refresh is handled by reconnection
-    console.log('Refresh requested for server-side realtime connection');
+    // Refresh requested for server-side realtime connection
   }, []);
 
   return {
