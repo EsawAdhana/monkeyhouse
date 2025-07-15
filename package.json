@@ -24,7 +24,7 @@
     "encoding": "^0.1.13",
     "firebase": "^11.6.0",
     "firebase-admin": "^13.2.0",
-    "next": "^13.5.11",
+    "next": "^15.4.1",
     "next-auth": "latest",
     "openai": "^4.91.1",
     "react": "18.2.0",
