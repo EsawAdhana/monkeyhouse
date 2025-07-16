@@ -6,7 +6,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import { FiHome, FiSettings, FiMessageSquare, FiClipboard, FiLogOut } from 'react-icons/fi';
 import { signOut } from 'next-auth/react';
 import ThemeToggle from './ThemeToggle';
-import useSurveyStatus from '@/hooks/useSurveyStatus';
+import { useSurveyStatus } from '@/contexts/SurveyStatusContext';
 import { useNotifications } from '@/contexts/NotificationContext';
 import { MessagesBadge } from '@/components/NotificationBadge';
 
@@ -23,6 +23,7 @@ export default function Navigation() {
 
   // Check which page is active
   const isActive = (path: string) => {
+    if (!pathname) return false;
     if (path === '/dashboard' && pathname === '/dashboard') return true;
     if (path === '/messages' && (pathname === '/messages' || pathname.startsWith('/messages/'))) return true;
     if (path === '/survey' && pathname.startsWith('/survey')) return true;
@@ -32,8 +33,8 @@ export default function Navigation() {
   
   // Handle navigation for users who haven't completed the survey
   const handleNavigation = (e: React.MouseEvent<HTMLAnchorElement>, path: string) => {
-    // Skip check if loading, already on survey page, or survey is completed
-    if (loading || path === '/survey' || isSubmitted || pathname === path) {
+    // Skip check if loading, already on survey page, survey is completed, or already on target path
+    if (loading || path === '/survey' || isSubmitted === true || pathname === path) {
       return;
     }
     

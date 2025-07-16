@@ -165,9 +165,9 @@ const UserAvatar = ({ size = 32, letter = null }: { size?: number, letter?: stri
 export default function ConversationPage({
   params,
 }: {
-  params: { conversationId: string };
+  params: Promise<{ conversationId: string }>;
 }) {
-  const { conversationId } = params;
+  const { conversationId } = use(params);
   const { data: session } = useSession();
   const router = useRouter();
   const [conversation, setConversation] = useState<Conversation | null>(null);

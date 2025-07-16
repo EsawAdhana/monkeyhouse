@@ -9,6 +9,7 @@ import Image from 'next/image';
 import { FiUsers, FiHome, FiDollarSign, FiCalendar, FiList, FiStar, FiFlag, FiX, FiMapPin, FiMessageCircle, FiInfo, FiBarChart2, FiBriefcase } from 'react-icons/fi';
 import ReportUserModal from '@/components/ReportUserModal';
 import UserProfileModal from '@/components/UserProfileModal';
+import { useSurveyStatus } from '@/contexts/SurveyStatusContext';
 
 interface CompatibilityMatch {
   userEmail: string;
@@ -52,6 +53,7 @@ interface UserDetailProfile extends CompatibilityMatch {}
 export default function DashboardPage() {
   const { data: session, status } = useSession();
   const router = useRouter();
+  const { refreshStatus } = useSurveyStatus();
   const [surveyData, setSurveyData] = useState<SurveyFormData | null>(null);
   const [recommendations, setRecommendations] = useState<CompatibilityMatch[]>([]);
   const [loading, setLoading] = useState(true);
@@ -69,6 +71,9 @@ export default function DashboardPage() {
   useEffect(() => {
     const fetchSurveyData = async () => {
       try {
+        // Refresh the survey status context first
+        await refreshStatus();
+        
         // Use API route instead of direct Firebase function
         const response = await fetch('/api/survey');
         if (!response.ok) {
@@ -149,7 +154,7 @@ export default function DashboardPage() {
     if (session?.user) {
       fetchSurveyData();
     }
-  }, [session, showTestUsers]);
+  }, [session, showTestUsers, refreshStatus]);
   
   const viewUserDetails = async (match: CompatibilityMatch) => {
     try {

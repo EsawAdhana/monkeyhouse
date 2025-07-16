@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { usePathname } from 'next/navigation';
 import { useSurveyNavigation } from '@/contexts/SurveyNavigationContext';
+import { useSurveyStatus } from '@/contexts/SurveyStatusContext';
 import { useSurveyForm } from '@/hooks/useSurveyForm';
 import { SurveyFormData } from '@/constants/survey-constants';
 
@@ -23,6 +24,7 @@ export default function MultiPageSurvey({ onSubmitSuccess, isEditing = false, is
   const router = useRouter();
   const pathname = usePathname();
   const { setShowWarningOnNavigation, setHasUnsavedChanges } = useSurveyNavigation();
+  const { refreshStatus } = useSurveyStatus();
   
   const {
     formData,
@@ -81,6 +83,9 @@ export default function MultiPageSurvey({ onSubmitSuccess, isEditing = false, is
     try {
       await saveSurvey(true);
       
+      // Refresh survey status after successful submission and wait for it to complete
+      await refreshStatus();
+      
       // Show completion modal
       setShowCompletionModal(true);
       
@@ -93,7 +98,9 @@ export default function MultiPageSurvey({ onSubmitSuccess, isEditing = false, is
     }
   };
   
-  const handleGoToDashboard = () => {
+  const handleGoToDashboard = async () => {
+    // Ensure the survey status is refreshed before navigation
+    await refreshStatus();
     router.push('/dashboard');
   };
   
@@ -109,104 +116,103 @@ export default function MultiPageSurvey({ onSubmitSuccess, isEditing = false, is
     <div className="max-w-3xl mx-auto">
       {/* Progress indicator */}
       <div className="mb-8">
-        <div className="flex justify-between items-center">
-          {Array.from({ length: 4 }, (_, i) => (
-            <div 
-              key={i} 
-              className={`flex items-center ${i < 3 ? 'flex-1' : ''}`}
-            >
-              <div className={`flex items-center justify-center h-8 w-8 rounded-full 
-                ${i + 1 < formData.currentPage ? 'bg-blue-500 text-white' : 
-                  i + 1 === formData.currentPage ? 'bg-blue-500 text-white' : 
-                  'bg-gray-200 dark:bg-gray-700 text-gray-500 dark:text-gray-300'}`}
-              >
-                {i + 1 < formData.currentPage ? '✓' : i + 1}
-              </div>
-              
-              {i < 3 && (
-                <div className={`flex-1 h-1 mx-2 
-                  ${i + 1 < formData.currentPage ? 'bg-blue-500' : 'bg-gray-200 dark:bg-gray-700'}`}
-                ></div>
-              )}
-            </div>
-          ))}
+        <div className="flex justify-between items-center mb-2">
+          <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+            Step {formData.currentPage} of 4
+          </span>
+          <span className="text-sm text-gray-500 dark:text-gray-400">
+            {Math.round((formData.currentPage / 4) * 100)}% Complete
+          </span>
         </div>
-        
-        <div className="flex justify-between mt-2 text-sm text-gray-500 dark:text-gray-400">
-          <div className="flex-1 text-center">Basic Info</div>
-          <div className="flex-1 text-center">Location</div>
-          <div className="flex-1 text-center">Timing & Budget</div>
-          <div className="flex-1 text-center">Preferences</div>
+        <div className="w-full bg-gray-200 rounded-full h-2 dark:bg-gray-700">
+          <div 
+            className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+            style={{ width: `${(formData.currentPage / 4) * 100}%` }}
+          ></div>
         </div>
       </div>
-      
-      {/* Conditional rendering of pages */}
-      <div className="mb-6">
-        {formData.currentPage === 1 && <BasicInfoPage formData={formData} setFormData={setFormData} />}
-        {formData.currentPage === 2 && <LocationPage formData={formData} setFormData={setFormData} />}
+
+      {/* Page content */}
+      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-6">
+        {formData.currentPage === 1 && (
+          <BasicInfoPage 
+            formData={formData} 
+            setFormData={setFormData}
+            hasDateError={hasDateError}
+            setHasDateError={setHasDateError}
+          />
+        )}
+        
+        {formData.currentPage === 2 && (
+          <LocationPage 
+            formData={formData} 
+            setFormData={setFormData}
+          />
+        )}
+        
         {formData.currentPage === 3 && (
           <TimingBudgetPage 
             formData={formData} 
-            setFormData={setFormData} 
-            setHasDateError={setHasDateError} 
+            setFormData={setFormData}
+            hasDateError={hasDateError}
+            setHasDateError={setHasDateError}
           />
         )}
-        {formData.currentPage === 4 && <PreferencesPage formData={formData} setFormData={setFormData} />}
-      </div>
-      
-      {/* Navigation buttons */}
-      <div className="flex justify-between mt-8 mb-12">
-        {formData.currentPage > 1 ? (
-          <button
-            onClick={handleBack}
-            className="px-6 py-2 rounded-md bg-white text-blue-600 border border-blue-500 hover:bg-blue-50 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors"
-            type="button"
-          >
-            Back
-          </button>
-        ) : (
-          <div></div> // Empty div for spacing
-        )}
         
-        {formData.currentPage < 4 ? (
-          <button
-            onClick={handleNext}
-            disabled={!canProceed() || saving}
-            className={`px-6 py-2 rounded-md text-white 
-              ${!canProceed() ? 'bg-blue-300 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700'} 
-              focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors flex items-center`}
-            type="button"
-          >
-            {saving ? (
-              <>
-                <span className="animate-spin inline-block h-4 w-4 border-t-2 border-b-2 border-white rounded-full mr-2"></span>
-                Saving...
-              </>
-            ) : (
-              "Next"
-            )}
-          </button>
-        ) : (
-          <button
-            onClick={handleSubmit}
-            disabled={saving || !canProceed()}
-            className={`px-6 py-2 rounded-md text-white 
-              ${saving || !canProceed() ? 'bg-blue-300 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700'} 
-              focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors flex items-center`}
-            type="button"
-          >
-            {saving ? (
-              <>
-                <span className="animate-spin inline-block h-4 w-4 border-t-2 border-b-2 border-white rounded-full mr-2"></span>
-                Saving...
-              </>
-            ) : (
-              "Submit Survey"
-            )}
-          </button>
+        {formData.currentPage === 4 && (
+          <PreferencesPage 
+            formData={formData} 
+            setFormData={setFormData}
+          />
         )}
       </div>
-      
+
+      {/* Navigation buttons */}
+      <div className="flex justify-between mt-6">
+        <button
+          type="button"
+          onClick={handleBack}
+          disabled={formData.currentPage === 1}
+          className={`px-6 py-2 rounded-md transition-colors ${
+            formData.currentPage === 1
+              ? 'bg-gray-300 text-gray-500 cursor-not-allowed dark:bg-gray-600 dark:text-gray-400'
+              : 'bg-gray-500 text-white hover:bg-gray-600 dark:bg-gray-600 dark:hover:bg-gray-700'
+          }`}
+        >
+          Back
+        </button>
+        
+        <div className="flex gap-3">
+          {formData.currentPage < 4 ? (
+            <button
+              type="button"
+              onClick={handleNext}
+              disabled={!canProceed() || saving}
+              className={`px-6 py-2 rounded-md transition-colors ${
+                !canProceed() || saving
+                  ? 'bg-gray-300 text-gray-500 cursor-not-allowed dark:bg-gray-600 dark:text-gray-400'
+                  : 'bg-blue-600 text-white hover:bg-blue-700 dark:bg-blue-600 dark:hover:bg-blue-700'
+              }`}
+            >
+              {saving ? 'Saving...' : 'Next'}
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={handleSubmit}
+              disabled={!canProceed() || saving}
+              className={`px-6 py-2 rounded-md transition-colors ${
+                !canProceed() || saving
+                  ? 'bg-gray-300 text-gray-500 cursor-not-allowed dark:bg-gray-600 dark:text-gray-400'
+                  : 'bg-green-600 text-white hover:bg-green-700 dark:bg-green-600 dark:hover:bg-green-700'
+              }`}
+            >
+              {saving ? 'Submitting...' : 'Submit Survey'}
+            </button>
+          )}
+        </div>
+      </div>
+
       {/* Completion Modal */}
       {showCompletionModal && (
         <div className="fixed inset-0 z-50 overflow-auto bg-gray-800 bg-opacity-50 flex items-center justify-center">

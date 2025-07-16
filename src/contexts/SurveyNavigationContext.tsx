@@ -2,7 +2,7 @@
 
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
-import useSurveyStatus from '@/hooks/useSurveyStatus';
+import { useSurveyStatus } from '@/contexts/SurveyStatusContext';
 
 interface SurveyNavigationContextType {
   showWarningOnNavigation: boolean;
@@ -22,7 +22,7 @@ export function SurveyNavigationProvider({ children }: { children: React.ReactNo
   
   // Only enable warning when in survey path and there are unsaved changes
   useEffect(() => {
-    if (pathname.includes('/survey')) {
+    if (pathname?.includes('/survey')) {
       setShowWarningOnNavigation(hasUnsavedChanges);
     } else {
       setShowWarningOnNavigation(false);
@@ -48,7 +48,7 @@ export function SurveyNavigationProvider({ children }: { children: React.ReactNo
       if (!navigationElement) return;
       
       // Skip internal survey navigation (buttons inside forms)
-      if (pathname.includes('/survey') && navigationElement.closest('form')) {
+      if (pathname?.includes('/survey') && navigationElement.closest('form')) {
         return;
       }
       
@@ -64,7 +64,7 @@ export function SurveyNavigationProvider({ children }: { children: React.ReactNo
         if (!link.href || 
             link.href.includes('#') || 
             link.target === '_blank' ||
-            link.href.includes(pathname)) {
+            link.href.includes(pathname || '')) {
           return;
         }
         
@@ -92,33 +92,40 @@ export function SurveyNavigationProvider({ children }: { children: React.ReactNo
             navigationElement.classList.contains('disabled')) {
           return;
         }
-
-        // Show warning for sign out buttons
-        if (navigationElement.textContent?.includes('Sign Out') && showWarningOnNavigation) {
-          const confirmationMessage = "You have unsaved changes. Are you sure you want to sign out? Your changes will be lost.";
-          if (!window.confirm(confirmationMessage)) {
-            e.preventDefault();
-            e.stopImmediatePropagation();
-            return;
+        
+        // Check if this is a navigation button (you might want to add more specific checks)
+        const buttonText = navigationElement.textContent?.toLowerCase() || '';
+        const isNavigationButton = buttonText.includes('next') || 
+                                  buttonText.includes('previous') || 
+                                  buttonText.includes('submit') ||
+                                  buttonText.includes('save');
+        
+        if (isNavigationButton) {
+          if (showWarningOnNavigation) {
+            const confirmationMessage = "You have unsaved changes. Are you sure you want to leave? Your changes will be lost.";
+            if (!window.confirm(confirmationMessage)) {
+              e.preventDefault();
+              e.stopImmediatePropagation();
+              return;
+            }
           }
         }
       }
     };
     
-    // Use capture to intercept clicks before regular handlers
-    document.addEventListener('click', handleClick, { capture: true });
+    document.addEventListener('click', handleClick);
     
     return () => {
-      document.removeEventListener('click', handleClick, { capture: true });
+      document.removeEventListener('click', handleClick);
     };
   }, [showWarningOnNavigation, pathname, router]);
   
   return (
     <SurveyNavigationContext.Provider value={{ 
       showWarningOnNavigation, 
-      setShowWarningOnNavigation,
-      hasUnsavedChanges,
-      setHasUnsavedChanges
+      setShowWarningOnNavigation, 
+      hasUnsavedChanges, 
+      setHasUnsavedChanges 
     }}>
       {children}
     </SurveyNavigationContext.Provider>
